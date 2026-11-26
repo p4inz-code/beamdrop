@@ -4,114 +4,129 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self';" />
-  <title>BeamDrop — Local Wireless Transfer</title>
+  <title>BeamDrop</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="app-shell">
-    <!-- Left Sidebar: Connection & Security -->
-    <aside class="sidebar">
-      <div class="brand">
-        <div class="brand-logo">⚡</div>
-        <div class="brand-text">
-          <h1>BeamDrop</h1>
-          <span class="status-badge"><span class="status-dot"></span>Online · Local Wi-Fi</span>
-        </div>
+  <div class="window-frame">
+    <!-- Custom Frameless Titlebar -->
+    <header class="titlebar">
+      <div class="titlebar-brand">
+        <svg class="icon-sm accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="titlebar-name">BeamDrop</span>
+        <span class="status-badge"><span class="status-dot"></span>LAN Ready</span>
       </div>
-
-      <div class="card qr-card">
-        <img id="qr-img" alt="Scan QR with Phone" />
-        <div class="url-row">
-          <div class="url-pill" id="server-url">http://...</div>
-          <button id="btn-copy-url" class="btn-icon" title="Copy URL">📋</button>
-        </div>
-        <div class="pin-row">
-          <span class="pin-label">PIN</span>
-          <span class="pin-code" id="pin-code">----</span>
-          <button id="btn-regen-pin" class="btn-icon" title="Generate New PIN">↻</button>
-        </div>
+      <div class="window-controls">
+        <button id="win-min" class="win-btn" title="Minimize" aria-label="Minimize">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14"/></svg>
+        </button>
+        <button id="win-max" class="win-btn" title="Maximize" aria-label="Maximize">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="5" width="14" height="14" rx="1.5"/></svg>
+        </button>
+        <button id="win-close" class="win-btn win-close" title="Minimize to Tray" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
       </div>
+    </header>
 
-      <div class="card controls-card">
-        <label class="field-label" for="iface-select">Network Adapter</label>
-        <select id="iface-select" class="select-input"></select>
-
-        <div class="toggle-row">
-          <span>Require PC Approval</span>
-          <input type="checkbox" id="chk-approval" checked />
-        </div>
-
-        <div class="save-dir-box">
-          <span class="field-label">Save Folder (Phone → PC)</span>
-          <div class="save-dir-path" id="save-dir-path"></div>
-          <div class="btn-row">
-            <button id="btn-change-save" class="btn btn-sm">Change</button>
-            <button id="btn-open-save" class="btn btn-sm">Open</button>
+    <div class="app-shell">
+      <!-- Left Sidebar -->
+      <aside class="sidebar">
+        <div class="card qr-card">
+          <img id="qr-img" alt="Pairing QR Code" />
+          <div class="url-row">
+            <div class="url-pill" id="server-url">http://...</div>
+            <button id="btn-copy-url" class="btn-icon" title="Copy URL">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </button>
+          </div>
+          <div class="pin-row">
+            <span class="pin-label">PIN</span>
+            <span class="pin-code" id="pin-code">----</span>
+            <button id="btn-regen-pin" class="btn-icon" title="Regenerate PIN">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+            </button>
           </div>
         </div>
-      </div>
 
-      <div class="card sessions-card">
-        <div class="card-header">
-          <span>Connected Devices (<span id="session-count">0</span>)</span>
-          <button id="btn-revoke" class="btn-link danger">Revoke All</button>
+        <div class="card controls-card">
+          <label class="field-label" for="iface-select">Network Adapter</label>
+          <select id="iface-select" class="select-input"></select>
+
+          <label class="toggle-row" for="chk-approval">
+            <span>Require PC Approval</span>
+            <input type="checkbox" id="chk-approval" class="switch" checked />
+          </label>
+
+          <div class="save-dir-box">
+            <span class="field-label">Save Folder (Phone to PC)</span>
+            <div class="save-dir-path" id="save-dir-path"></div>
+            <div class="btn-row">
+              <button id="btn-change-save" class="btn btn-sm">Change</button>
+              <button id="btn-open-save" class="btn btn-sm">Open Folder</button>
+            </div>
+          </div>
         </div>
-        <ul id="sessions-list" class="sessions-list"></ul>
-      </div>
-    </aside>
 
-    <!-- Main Workspace -->
-    <main class="main-area">
-      <!-- Pending Approval Banner -->
-      <div id="approval-banner" class="approval-banner hidden"></div>
+        <div class="card sessions-card">
+          <div class="card-header">
+            <span>Devices (<span id="session-count">0</span>)</span>
+            <button id="btn-revoke" class="btn-link danger">Revoke All</button>
+          </div>
+          <ul id="sessions-list" class="sessions-list"></ul>
+        </div>
+      </aside>
 
-      <!-- Drop Zone -->
-      <div id="drop-zone" class="drop-zone">
-        <div class="drop-content">
-          <div class="drop-title">Drop 1GB+ videos, files, or folders here to share</div>
-          <div class="drop-sub">Original quality · Zero cloud · Full Wi-Fi speed</div>
+      <!-- Main Workspace -->
+      <main class="main-area">
+        <div id="approval-banner" class="approval-banner hidden"></div>
+
+        <div id="drop-zone" class="drop-zone">
+          <div class="drop-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          </div>
+          <div class="drop-title">Drop videos, files, or folders to share</div>
+          <div class="drop-sub">Original quality · Direct LAN stream · 2GB+ ready</div>
           <div class="drop-actions">
-            <button id="btn-pick-files" class="btn btn-primary">+ Share Files</button>
-            <button id="btn-pick-folder" class="btn">+ Share Folder</button>
+            <button id="btn-pick-files" class="btn btn-primary">Add Files</button>
+            <button id="btn-pick-folder" class="btn">Add Folder</button>
           </div>
         </div>
-      </div>
 
-      <!-- Navigation Tabs -->
-      <div class="tabs">
-        <button class="tab active" data-tab="files">Shared Files (<span id="files-count">0</span>)</button>
-        <button class="tab" data-tab="transfers">Transfers (<span id="transfers-count">0</span>)</button>
-        <button class="tab" data-tab="clipboard">Clipboard &amp; Links</button>
-      </div>
+        <div class="tabs">
+          <button class="tab active" data-tab="files">Shared Files (<span id="files-count">0</span>)</button>
+          <button class="tab" data-tab="transfers">Transfers (<span id="transfers-count">0</span>)</button>
+          <button class="tab" data-tab="clipboard">Clipboard</button>
+        </div>
 
-      <!-- Tab: Shared Files -->
-      <section id="tab-files" class="tab-panel active">
-        <div class="toolbar">
-          <input id="file-search" type="search" class="search-input" placeholder="Filter shared files..." />
-          <div class="filter-pills">
-            <button class="pill active" data-filter="all">All</button>
-            <button class="pill" data-filter="video">Videos</button>
-            <button class="pill" data-filter="image">Images</button>
-            <button class="pill" data-filter="folder">Folders</button>
+        <section id="tab-files" class="tab-panel active">
+          <div class="toolbar">
+            <input id="file-search" type="search" class="search-input" placeholder="Filter by filename..." />
+            <div class="filter-pills">
+              <button class="pill active" data-filter="all">All</button>
+              <button class="pill" data-filter="video">Videos</button>
+              <button class="pill" data-filter="image">Images</button>
+              <button class="pill" data-filter="folder">Folders</button>
+            </div>
           </div>
-        </div>
-        <div id="files-list" class="item-list"></div>
-      </section>
+          <div id="files-list" class="item-list"></div>
+        </section>
 
-      <!-- Tab: Transfers -->
-      <section id="tab-transfers" class="tab-panel">
-        <div id="transfers-list" class="item-list"></div>
-      </section>
+        <section id="tab-transfers" class="tab-panel">
+          <div id="transfers-list" class="item-list"></div>
+        </section>
 
-      <!-- Tab: Clipboard -->
-      <section id="tab-clipboard" class="tab-panel">
-        <div class="clip-composer">
-          <textarea id="clip-input" placeholder="Paste text or URL to send to phone..."></textarea>
-          <button id="btn-send-clip" class="btn btn-primary">Send to Phone</button>
-        </div>
-        <div id="clip-list" class="item-list"></div>
-      </section>
-    </main>
+        <section id="tab-clipboard" class="tab-panel">
+          <div class="clip-composer">
+            <textarea id="clip-input" placeholder="Paste text or URL to push to phone..."></textarea>
+            <button id="btn-send-clip" class="btn btn-primary">Send</button>
+          </div>
+          <div id="clip-list" class="item-list"></div>
+        </section>
+      </main>
+    </div>
   </div>
 
   <div id="toast" class="toast hidden"></div>

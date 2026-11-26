@@ -1,6 +1,9 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('beamdrop', {
+  minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
+  maximizeWindow: () => ipcRenderer.invoke('window:maximize'),
+  closeWindow: () => ipcRenderer.invoke('window:close'),
   getState: () => ipcRenderer.invoke('app:get-state'),
   selectInterface: (address) => ipcRenderer.invoke('app:select-interface', address),
   regeneratePin: () => ipcRenderer.invoke('app:regenerate-pin'),

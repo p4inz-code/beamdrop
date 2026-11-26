@@ -1,10 +1,10 @@
 :root {
-  --bg: #090d16;
-  --surface: #111827;
-  --surface-2: #182235;
-  --border: #243049;
-  --text: #f1f5f9;
-  --muted: #94a3b8;
+  --bg: #090d14;
+  --surface: #0f1520;
+  --surface-2: #161f2e;
+  --border: #232f44;
+  --text: #e2e8f0;
+  --muted: #8492a6;
   --accent: #38bdf8;
   --accent-hover: #0ea5e9;
   --danger: #f43f5e;
@@ -17,8 +17,22 @@
   padding: 0;
 }
 
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
   background: var(--bg);
   color: var(--text);
   height: 100vh;
@@ -26,65 +40,119 @@ body {
   user-select: none;
 }
 
-.app-shell {
-  display: grid;
-  grid-template-columns: 300px 1fr;
-  height: 100vh;
-}
-
-.sidebar {
-  background: var(--surface);
-  border-right: 1px solid var(--border);
-  padding: 16px;
+.window-frame {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  overflow-y: auto;
+  height: 100vh;
+  border: 1px solid var(--border);
 }
 
-.brand {
+.titlebar {
+  height: 38px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: space-between;
+  padding: 0 0 0 14px;
+  -webkit-app-region: drag;
+  flex-shrink: 0;
 }
 
-.brand-logo {
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
-  background: rgba(56, 189, 248, 0.14);
-  border: 1px solid rgba(56, 189, 248, 0.25);
-  display: grid;
-  place-items: center;
-  font-size: 18px;
+.titlebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.brand h1 {
-  font-size: 16px;
-  font-weight: 700;
+.icon-sm {
+  width: 15px;
+  height: 15px;
+}
+
+.accent {
+  color: var(--accent);
+}
+
+.titlebar-name {
+  font-size: 13px;
+  font-weight: 600;
   letter-spacing: -0.01em;
 }
 
 .status-badge {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   font-size: 11px;
   color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-left: 4px;
 }
 
 .status-dot {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--success);
-  box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+}
+
+.window-controls {
+  display: flex;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+
+.win-btn {
+  width: 44px;
+  height: 100%;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.win-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.win-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.win-close:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 290px 1fr;
+  flex: 1;
+  min-height: 0;
+}
+
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
 }
 
 .card {
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 10px;
   padding: 12px;
 }
 
@@ -96,9 +164,9 @@ body {
 }
 
 .qr-card img {
-  width: 158px;
-  height: 158px;
-  border-radius: 10px;
+  width: 152px;
+  height: 152px;
+  border-radius: 8px;
   background: #fff;
   padding: 4px;
 }
@@ -115,10 +183,10 @@ body {
   font-family: ui-monospace, Consolas, monospace;
   font-size: 12px;
   color: var(--accent);
-  background: rgba(56, 189, 248, 0.1);
-  border: 1px solid rgba(56, 189, 248, 0.2);
-  padding: 4px 10px;
-  border-radius: 7px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 5px 10px;
+  border-radius: 6px;
   user-select: text;
   word-break: break-all;
   text-align: center;
@@ -139,7 +207,7 @@ body {
 
 .pin-code {
   font-family: ui-monospace, Consolas, monospace;
-  font-size: 21px;
+  font-size: 20px;
   font-weight: 700;
   letter-spacing: 0.16em;
   color: #fff;
@@ -154,14 +222,16 @@ body {
 }
 
 .select-input {
+  appearance: none;
   width: 100%;
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 7px;
-  padding: 7px 8px;
+  border-radius: 6px;
+  padding: 7px 10px;
   font-size: 12px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
+  cursor: pointer;
 }
 
 .toggle-row {
@@ -169,7 +239,43 @@ body {
   justify-content: space-between;
   align-items: center;
   font-size: 12px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
+  cursor: pointer;
+}
+
+/* Custom Switch (zero OS styling) */
+.switch {
+  appearance: none;
+  width: 34px;
+  height: 18px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: transform 0.15s, background 0.15s;
+}
+
+.switch:checked {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: var(--accent);
+}
+
+.switch:checked::after {
+  transform: translateX(16px);
+  background: var(--accent);
 }
 
 .save-dir-path {
@@ -177,6 +283,7 @@ body {
   color: var(--muted);
   word-break: break-all;
   margin-bottom: 8px;
+  font-family: ui-monospace, Consolas, monospace;
 }
 
 .btn-row {
@@ -185,15 +292,15 @@ body {
 }
 
 .btn {
-  background: var(--surface);
+  background: var(--bg);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 7px;
   padding: 7px 12px;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color 0.15s;
 }
 
 .btn:hover {
@@ -202,7 +309,7 @@ body {
 
 .btn-primary {
   background: var(--accent);
-  color: #08101c;
+  color: #07101b;
   border-color: var(--accent);
   font-weight: 600;
 }
@@ -212,7 +319,7 @@ body {
 }
 
 .btn-sm {
-  padding: 4px 10px;
+  padding: 5px 10px;
   font-size: 11px;
 }
 
@@ -220,12 +327,17 @@ body {
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--muted);
-  border-radius: 7px;
+  border-radius: 6px;
   width: 28px;
   height: 28px;
   cursor: pointer;
   display: grid;
   place-items: center;
+}
+
+.btn-icon svg {
+  width: 14px;
+  height: 14px;
 }
 
 .btn-icon:hover {
@@ -256,13 +368,13 @@ body {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
   font-size: 11px;
   color: var(--muted);
 }
 
 .main-area {
-  padding: 18px 20px;
+  padding: 16px 20px;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -270,14 +382,14 @@ body {
 }
 
 .approval-banner {
-  background: rgba(56, 189, 248, 0.12);
+  background: rgba(56, 189, 248, 0.1);
   border: 1px solid var(--accent);
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 10px 14px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  font-size: 13px;
 }
 
 .approval-banner.hidden {
@@ -285,23 +397,30 @@ body {
 }
 
 .drop-zone {
-  border: 2px dashed var(--border);
-  border-radius: 14px;
-  padding: 20px;
+  border: 1.5px dashed var(--border);
+  border-radius: 10px;
+  padding: 18px;
   text-align: center;
-  background: rgba(17, 24, 39, 0.65);
+  background: var(--surface);
   transition: border-color 0.15s, background 0.15s;
 }
 
 .drop-zone.drag-over {
   border-color: var(--accent);
-  background: rgba(56, 189, 248, 0.08);
+  background: rgba(56, 189, 248, 0.06);
+}
+
+.drop-icon {
+  width: 28px;
+  height: 28px;
+  margin: 0 auto 8px;
+  color: var(--accent);
 }
 
 .drop-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
-  margin-bottom: 4px;
+  margin-bottom: 3px;
 }
 
 .drop-sub {
@@ -327,9 +446,10 @@ body {
   background: transparent;
   color: var(--muted);
   border: 1px solid transparent;
-  border-radius: 8px;
-  padding: 6px 13px;
-  font-size: 13px;
+  border-radius: 7px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
 }
 
@@ -355,18 +475,21 @@ body {
   display: flex;
   gap: 10px;
   align-items: center;
-  flex-wrap: wrap;
 }
 
 .search-input {
   flex: 1;
-  min-width: 180px;
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 7px;
   padding: 7px 10px;
   font-size: 12px;
+  outline: none;
+}
+
+.search-input:focus {
+  border-color: var(--accent);
 }
 
 .filter-pills {
@@ -378,14 +501,14 @@ body {
   background: var(--surface);
   color: var(--muted);
   border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 4px 10px;
+  border-radius: 6px;
+  padding: 5px 10px;
   font-size: 11px;
   cursor: pointer;
 }
 
 .pill.active {
-  background: rgba(56, 189, 248, 0.15);
+  background: rgba(56, 189, 248, 0.14);
   color: var(--accent);
   border-color: var(--accent);
 }
@@ -393,24 +516,31 @@ body {
 .item-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
 }
 
 .item-row {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px 14px;
+  border-radius: 8px;
+  padding: 10px 12px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
 }
 
+.item-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
 .item-meta {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   min-width: 0;
   flex: 1;
 }
@@ -431,10 +561,11 @@ body {
 .dir-badge {
   display: inline-block;
   font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 5px;
+  padding: 1px 6px;
+  border-radius: 4px;
   margin-right: 6px;
   font-weight: 600;
+  font-family: ui-monospace, Consolas, monospace;
 }
 
 .dir-down {
@@ -448,7 +579,7 @@ body {
 }
 
 .progress-bar {
-  height: 6px;
+  height: 5px;
   background: var(--bg);
   border-radius: 999px;
   overflow: hidden;
@@ -468,35 +599,35 @@ body {
 
 .clip-composer textarea {
   flex: 1;
-  height: 60px;
+  height: 58px;
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 8px;
+  padding: 8px 10px;
   font-family: inherit;
   font-size: 12px;
   resize: none;
+  outline: none;
 }
 
 .empty-state {
   text-align: center;
   color: var(--muted);
-  font-size: 13px;
-  padding: 32px 12px;
+  font-size: 12px;
+  padding: 28px 12px;
 }
 
 .toast {
   position: fixed;
-  bottom: 18px;
-  right: 18px;
+  bottom: 16px;
+  right: 16px;
   background: var(--surface-2);
   color: var(--text);
   border: 1px solid var(--accent);
-  border-radius: 9px;
-  padding: 9px 14px;
+  border-radius: 7px;
+  padding: 8px 14px;
   font-size: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   z-index: 100;
 }
 

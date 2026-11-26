@@ -201,12 +201,17 @@ test('Integration: Auth, PIN rate limit, Approval, Chunked Upload SHA-256, 206 R
   });
   assert.equal(badRangeRes.status, 416);
 
-  // 8. Batch ZIP streaming
-  const zipRes = await fetch(`${baseUrl}/api/zip?ids=${fileId}`, { headers: authHeaders });
+  // 8. Batch ZIP streaming via ?token= query + verify ZIP end-of-central-directory & filename entry
+  const zipRes = await fetch(`${baseUrl}/api/zip?ids=${fileId}&token=${encodeURIComponent(token)}`);
   assert.equal(zipRes.status, 200);
   assert.equal(zipRes.headers.get('content-type'), 'application/zip');
   const zipBuf = Buffer.from(await zipRes.arrayBuffer());
   assert.equal(zipBuf.subarray(0, 4).toString('binary'), 'PK\x03\x04');
+  // Verify End of Central Directory signature (PK\x05\x06) and embedded filename
+  assert.ok(zipBuf.includes(Buffer.from('PK\x05\x06', 'binary')));
+  assert.ok(zipBuf.includes(Buffer.from('evil_video.mp4', 'utf8')));
+  // Verify STORE mode (uncompressed payload bytes exist intact inside ZIP)
+  assert.ok(zipBuf.includes(payload.subarray(0, 1024)));
 
   // 9. Cross-origin CSRF protection
   const csrfRes = await fetch(`${baseUrl}/api/clipboard`, {
@@ -216,23 +221,30 @@ test('Integration: Auth, PIN rate limit, Approval, Chunked Upload SHA-256, 206 R
   });
   assert.equal(csrfRes.status, 403);
 
-  // 10. Upload status endpoint (resume support) + 16MB multi-chunk stress test
+  // 10. Upload status & fingerprint resume + 16MB multi-chunk stress test
   const stressBuf = crypto.randomBytes(16 * 1024 * 1024); // 16 MB across 4 x 4MB chunks
   const stressHash = crypto.createHash('sha256').update(stressBuf).digest('hex');
+  const fingerprint = 'large_video.mp4:16777216:12345';
   const sInit = await (await fetch(`${baseUrl}/api/upload/init`, {
     method: 'POST',
     headers: { ...authHeaders, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ filename: 'large_video.mp4', totalSize: stressBuf.length, chunkSize: 4 * 1024 * 1024 })
+    body: JSON.stringify({ filename: 'large_video.mp4', totalSize: stressBuf.length, chunkSize: 4 * 1024 * 1024, fingerprint })
   })).json();
 
-  // Upload chunk 0, check status endpoint
+  // Upload chunk 0, verify fingerprint resume returns resumed: true + receivedChunks: [0]
   await fetch(`${baseUrl}/api/upload/chunk/${sInit.uploadId}/0`, {
     method: 'PUT',
     headers: authHeaders,
     body: stressBuf.subarray(0, 4 * 1024 * 1024)
   });
-  const upStatus = await (await fetch(`${baseUrl}/api/upload/status/${sInit.uploadId}`, { headers: authHeaders })).json();
-  assert.deepEqual(upStatus.receivedChunks, [0]);
+  const resumedInit = await (await fetch(`${baseUrl}/api/upload/init`, {
+    method: 'POST',
+    headers: { ...authHeaders, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename: 'large_video.mp4', totalSize: stressBuf.length, chunkSize: 4 * 1024 * 1024, fingerprint })
+  })).json();
+  assert.equal(resumedInit.resumed, true);
+  assert.equal(resumedInit.uploadId, sInit.uploadId);
+  assert.deepEqual(resumedInit.receivedChunks, [0]);
 
   for (let i = 1; i < 4; i++) {
     const start = i * 4 * 1024 * 1024;
@@ -258,6 +270,7 @@ test('Integration: Auth, PIN rate limit, Approval, Chunked Upload SHA-256, 206 R
   const dlRes = await fetch(`${baseUrl}/api/files/${sComp.file.id}/download`, { headers: authHeaders });
   assert.equal(dlRes.status, 200);
   await dlRes.arrayBuffer();
+  await new Promise((r) => setTimeout(r, 50));
   assert.ok(dlEvents.some((e) => e.status === 'completed' && e.receivedBytes === stressBuf.length));
 
   // 12. Session revocation

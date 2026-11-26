@@ -2,21 +2,25 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <meta name="theme-color" content="#090d16" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#090d14" />
   <link rel="manifest" href="/manifest.json" />
-  <title>BeamDrop Mobile</title>
+  <title>BeamDrop</title>
   <link rel="stylesheet" href="/mobile.css" />
 </head>
 <body>
   <!-- Auth Screen -->
   <div id="auth-screen" class="screen">
     <div class="auth-card">
-      <div class="logo">⚡</div>
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
       <h1>BeamDrop</h1>
-      <p class="muted">Enter the 4-digit PIN shown on your PC</p>
-      <input id="pin-input" type="tel" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="off" />
-      <button id="btn-pair" class="btn btn-primary btn-full">Connect</button>
+      <p class="muted">Enter the 4-digit PIN displayed on your PC</p>
+      <input id="pin-input" type="tel" inputmode="numeric" maxlength="4" placeholder="0000" autocomplete="off" />
+      <button id="btn-pair" class="btn btn-primary btn-full">Connect to PC</button>
       <div id="auth-status" class="status-msg"></div>
     </div>
   </div>
@@ -25,25 +29,31 @@
   <div id="app-screen" class="screen hidden">
     <header class="topbar">
       <div class="topbar-left">
-        <span class="dot"></span>
+        <span id="conn-dot" class="dot"></span>
         <strong>BeamDrop</strong>
+        <span id="conn-label" class="conn-label">Connected</span>
       </div>
       <button id="btn-disconnect" class="btn btn-sm">Disconnect</button>
     </header>
 
-    <!-- Upload Action -->
+    <!-- Primary Upload Action -->
     <section class="upload-bar">
       <input id="file-picker" type="file" multiple class="hidden" />
-      <button id="btn-send-files" class="btn btn-primary btn-full">⬆ Send Videos / Files to PC</button>
+      <button id="btn-send-files" class="btn btn-primary btn-full">
+        <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        Send Videos or Files to PC
+      </button>
     </section>
 
     <!-- Active Uploads Queue -->
     <section id="uploads-section" class="section hidden">
-      <h2 class="section-title">Sending to PC</h2>
+      <h2 class="section-title">Uploading to PC</h2>
       <div id="uploads-list" class="list"></div>
     </section>
 
-    <!-- Tabs -->
+    <!-- Navigation Tabs -->
     <nav class="tabs">
       <button class="tab active" data-tab="files">PC Files (<span id="files-count">0</span>)</button>
       <button class="tab" data-tab="clipboard">Clipboard</button>
@@ -51,15 +61,14 @@
 
     <!-- Files Tab -->
     <section id="tab-files" class="tab-panel active">
+      <div class="toolbar">
+        <input id="file-search" type="search" class="search-input" placeholder="Search files..." />
+      </div>
       <div class="filter-pills">
         <button class="pill active" data-filter="all">All</button>
         <button class="pill" data-filter="video">Videos</button>
         <button class="pill" data-filter="image">Images</button>
         <button class="pill" data-filter="folder">Folders</button>
-      </div>
-      <div id="batch-bar" class="batch-bar hidden">
-        <span id="selected-count">0 selected</span>
-        <button id="btn-download-zip" class="btn btn-primary btn-sm">Download .ZIP</button>
       </div>
       <div id="files-list" class="list"></div>
     </section>
@@ -67,11 +76,20 @@
     <!-- Clipboard Tab -->
     <section id="tab-clipboard" class="tab-panel">
       <div class="clip-box">
-        <textarea id="clip-input" placeholder="Paste text or link to send to PC..."></textarea>
-        <button id="btn-send-clip" class="btn btn-primary">Send</button>
+        <textarea id="clip-input" placeholder="Paste text or URL to send to PC..."></textarea>
+        <button id="btn-send-clip" class="btn btn-primary">Send to PC</button>
       </div>
       <div id="clip-list" class="list"></div>
     </section>
+
+    <!-- Sticky Batch Action Bar -->
+    <div id="batch-bar" class="batch-bar hidden">
+      <div class="batch-info">
+        <span id="selected-count">0 selected</span>
+        <button id="btn-clear-sel" class="btn-link">Clear</button>
+      </div>
+      <button id="btn-download-zip" class="btn btn-primary btn-sm">Download .ZIP</button>
+    </div>
   </div>
 
   <!-- Video Player Modal -->

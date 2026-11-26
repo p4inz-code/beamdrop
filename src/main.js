@@ -53,13 +53,13 @@ function sendToRenderer(channel, payload) {
 
 async function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1020,
-    height: 700,
-    minWidth: 820,
+    width: 1060,
+    height: 720,
+    minWidth: 840,
     minHeight: 580,
-    backgroundColor: '#0b0f19',
-    title: 'BeamDrop — Local Wireless Transfer',
-    autoHideMenuBar: true,
+    frame: false,
+    backgroundColor: '#090d16',
+    title: 'BeamDrop',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -109,6 +109,15 @@ function createTray() {
 }
 
 function registerIpc() {
+  ipcMain.handle('window:minimize', () => mainWindow?.minimize());
+  ipcMain.handle('window:maximize', () => {
+    if (!mainWindow) return false;
+    if (mainWindow.isMaximized()) mainWindow.unmaximize();
+    else mainWindow.maximize();
+    return mainWindow.isMaximized();
+  });
+  ipcMain.handle('window:close', () => mainWindow?.close());
+
   ipcMain.handle('app:get-state', () => buildAppState());
 
   ipcMain.handle('app:select-interface', async (_e, addr) => {

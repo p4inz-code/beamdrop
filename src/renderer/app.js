@@ -7,6 +7,28 @@ let activeFilter = 'all';
 let searchQuery = '';
 let toastTimer = null;
 
+function createSvgIcon(kind) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.75');
+  svg.setAttribute('class', 'item-icon');
+
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  if (kind === 'folder') {
+    path.setAttribute('d', 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z');
+  } else if (kind === 'video') {
+    path.setAttribute('d', 'M15 10l4.55-2.28A1 1 0 0 1 21 8.62v6.76a1 1 0 0 1-1.45.9L15 14v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2z');
+  } else if (kind === 'image') {
+    path.setAttribute('d', 'M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5zm4 10l3-3 4 4 2-2 3 3');
+  } else {
+    path.setAttribute('d', 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z');
+  }
+  svg.appendChild(path);
+  return svg;
+}
+
 function showToast(msg) {
   const el = $('toast');
   el.textContent = msg;
@@ -22,12 +44,11 @@ function formatBytes(bytes) {
   return `${(bytes / 1024 ** i).toFixed(i >= 2 ? 2 : 0)} ${units[i]}`;
 }
 
-function getFileIcon(file) {
-  if (file.isDirectory) return '📁';
-  if (file.mimeType.startsWith('video/')) return '🎬';
-  if (file.mimeType.startsWith('image/')) return '🖼️';
-  if (file.mimeType.startsWith('audio/')) return '🎵';
-  return '📄';
+function getFileKind(file) {
+  if (file.isDirectory) return 'folder';
+  if (file.mimeType.startsWith('video/')) return 'video';
+  if (file.mimeType.startsWith('image/')) return 'image';
+  return 'file';
 }
 
 function renderState(state) {
@@ -70,7 +91,7 @@ function renderFiles(files) {
     const empty = document.createElement('div');
     empty.className = 'empty-state';
     empty.textContent = files.length === 0
-      ? 'No shared files yet. Drop videos or folders above to share with your phone.'
+      ? 'No shared files yet. Drop videos or folders above to share.'
       : 'No files match the current filter.';
     list.appendChild(empty);
     return;
@@ -80,18 +101,20 @@ function renderFiles(files) {
     const row = document.createElement('div');
     row.className = 'item-row';
 
+    row.appendChild(createSvgIcon(getFileKind(file)));
+
     const meta = document.createElement('div');
     meta.className = 'item-meta';
 
     const nameEl = document.createElement('div');
     nameEl.className = 'item-name';
-    nameEl.textContent = `${getFileIcon(file)} ${file.name}`;
+    nameEl.textContent = file.name;
 
     const subEl = document.createElement('div');
     subEl.className = 'item-sub';
     subEl.textContent = file.isDirectory
-      ? `Folder (streams as .zip) · From ${file.source.toUpperCase()}`
-      : `${formatBytes(file.size)} · From ${file.source.toUpperCase()}`;
+      ? `Folder (.zip) · Source: ${file.source.toUpperCase()}`
+      : `${formatBytes(file.size)} · Source: ${file.source.toUpperCase()}`;
 
     meta.appendChild(nameEl);
     meta.appendChild(subEl);
@@ -116,7 +139,7 @@ function renderTransfers() {
   if (items.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'empty-state';
-    empty.textContent = 'No active or recent transfers yet.';
+    empty.textContent = 'No active or recent transfers.';
     list.appendChild(empty);
     return;
   }
@@ -134,7 +157,7 @@ function renderTransfers() {
     const badge = document.createElement('span');
     const isDownload = t.direction === 'download';
     badge.className = `dir-badge ${isDownload ? 'dir-down' : 'dir-up'}`;
-    badge.textContent = isDownload ? 'PC → Phone' : 'Phone → PC';
+    badge.textContent = isDownload ? 'PC -> PHONE' : 'PHONE -> PC';
 
     nameEl.appendChild(badge);
     nameEl.appendChild(document.createTextNode(t.filename));
@@ -174,14 +197,14 @@ function renderSessions(sessions) {
 
   if (sessions.length === 0) {
     const li = document.createElement('li');
-    li.textContent = 'No phone connected yet';
+    li.textContent = 'No connected devices';
     list.appendChild(li);
     return;
   }
 
   for (const s of sessions) {
     const li = document.createElement('li');
-    li.textContent = `• ${s.deviceName} (${s.ip})`;
+    li.textContent = `${s.deviceName} — ${s.ip}`;
     list.appendChild(li);
   }
 }
@@ -233,7 +256,7 @@ function renderApprovalBanner() {
   banner.classList.remove('hidden');
 
   const msg = document.createElement('span');
-  msg.textContent = `Device "${ch.deviceName}" (${ch.ip}) wants to connect.`;
+  msg.textContent = `Device "${ch.deviceName}" (${ch.ip}) requests access.`;
 
   const actions = document.createElement('div');
   actions.className = 'btn-row';
@@ -262,6 +285,11 @@ function renderApprovalBanner() {
   banner.appendChild(msg);
   banner.appendChild(actions);
 }
+
+// Custom Window Controls
+$('win-min').addEventListener('click', () => window.beamdrop.minimizeWindow());
+$('win-max').addEventListener('click', () => window.beamdrop.maximizeWindow());
+$('win-close').addEventListener('click', () => window.beamdrop.closeWindow());
 
 // Tabs
 document.querySelectorAll('.tab').forEach((tab) => {
@@ -336,7 +364,7 @@ dropZone.addEventListener('drop', async (e) => {
   }
 });
 
-// Events from Main Process
+// Events
 window.beamdrop.onStateChanged(renderState);
 window.beamdrop.onFilesChanged(renderFiles);
 window.beamdrop.onSessionsChanged(renderSessions);

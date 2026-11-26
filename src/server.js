@@ -291,8 +291,15 @@ class BeamDropServer extends EventEmitter {
     if (auth && auth.startsWith('Bearer ')) {
       return auth.slice(7).trim();
     }
-    const cookies = parseCookies(req.headers.cookie);
-    if (cookies.bd_token) return cookies.bd_token;
+    const cookie = parseCookies(req.headers.cookie).bd_token;
+    if (cookie) return cookie;
+    try {
+      const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const qToken = url.searchParams.get('token');
+      if (qToken) return qToken;
+    } catch {
+      // ignore
+    }
     return null;
   }
 
@@ -342,6 +349,7 @@ class BeamDropServer extends EventEmitter {
   }
 
   async handleRequest(req, res) {
+    req.socket?.setNoDelay?.(true);
     const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const pathname = parsedUrl.pathname;
     const remoteIp = req.socket.remoteAddress || 'unknown';
@@ -349,6 +357,10 @@ class BeamDropServer extends EventEmitter {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Referrer-Policy', 'no-referrer');
+
+    if (req.method === 'GET' && pathname === '/api/health') {
+      return sendJson(res, 200, { ok: true });
+    }
 
     if (req.method !== 'GET' && req.method !== 'HEAD' && !this.validateSameOrigin(req)) {
       return sendJson(res, 403, { error: 'Cross-origin request blocked' });
@@ -580,8 +592,10 @@ class BeamDropServer extends EventEmitter {
       }
     });
 
-    req.on('close', () => {
-      if (!stream.destroyed) stream.destroy();
+    res.on('close', () => {
+      if (!res.writableFinished && !stream.destroyed) {
+        stream.destroy();
+      }
     });
 
     stream.pipe(res);
@@ -695,18 +709,23 @@ class BeamDropServer extends EventEmitter {
     // Level 0 (STORE): near-zero CPU usage so 1GB+ video/photo bundles stream cool & fast
     const archive = archiver('zip', { store: true });
     archive.on('error', () => {
-      try {
-        res.end();
-      } catch {
-        // ignore
+      if (!res.writableEnded) {
+        try {
+          res.end();
+        } catch {
+          // ignore
+        }
       }
     });
-    req.on('close', () => {
-      archive.abort();
+    res.on('close', () => {
+      if (!res.writableFinished) {
+        archive.abort();
+      }
     });
 
     archive.pipe(res);
     for (const item of items) {
+      if (!fs.existsSync(item.filePath)) continue;
       if (item.isDirectory) {
         archive.directory(item.filePath, sanitizeFilename(item.name));
       } else {
@@ -731,9 +750,27 @@ class BeamDropServer extends EventEmitter {
     const totalSize = Number(body.totalSize);
     const requestedChunk = Number(body.chunkSize) || 8 * 1024 * 1024;
     const chunkSize = Math.min(Math.max(requestedChunk, 64 * 1024), 16 * 1024 * 1024);
+    const fingerprint = typeof body.fingerprint === 'string' ? body.fingerprint.slice(0, 128) : '';
 
     if (!Number.isFinite(totalSize) || totalSize <= 0 || totalSize > this.maxFileSize) {
       return sendJson(res, 400, { error: `Invalid file size (max ${Math.round(this.maxFileSize / (1024 ** 3))} GB)` });
+    }
+
+    // Resume existing upload if fingerprint matches an active partial upload
+    if (fingerprint) {
+      for (const existing of this.uploads.values()) {
+        if (existing.fingerprint === fingerprint && existing.totalSize === totalSize) {
+          existing.lastActivityAt = Date.now();
+          return sendJson(res, 200, {
+            uploadId: existing.id,
+            filename: existing.filename,
+            chunkSize: existing.chunkSize,
+            totalChunks: existing.totalChunks,
+            receivedChunks: Array.from(existing.receivedChunks),
+            resumed: true
+          });
+        }
+      }
     }
 
     const hasSpace = await this.checkDiskSpace(totalSize);
@@ -749,6 +786,7 @@ class BeamDropServer extends EventEmitter {
 
     const upload = {
       id: uploadId,
+      fingerprint,
       filename: dest.filename,
       finalPath: dest.fullPath,
       tempPath,

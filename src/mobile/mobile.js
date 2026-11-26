@@ -3,12 +3,36 @@ const $ = (id) => document.getElementById(id);
 const CHUNK_SIZE = 8 * 1024 * 1024;
 let authToken = localStorage.getItem('bd_token') || '';
 let ws = null;
+let reconnectTimer = null;
+let reconnectDelay = 1000;
+let isLoggedIn = false;
 let filesCache = [];
 let activeFilter = 'all';
+let searchQuery = '';
 let wakeLock = null;
 let toastTimer = null;
 const selectedIds = new Set();
 const activeUploads = new Map();
+
+function createSvgIcon(kind) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.75');
+  svg.setAttribute('class', 'item-icon');
+
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  if (kind === 'folder') {
+    path.setAttribute('d', 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z');
+  } else if (kind === 'video') {
+    path.setAttribute('d', 'M15 10l4.55-2.28A1 1 0 0 1 21 8.62v6.76a1 1 0 0 1-1.45.9L15 14v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2z');
+  } else {
+    path.setAttribute('d', 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z');
+  }
+  svg.appendChild(path);
+  return svg;
+}
 
 function showToast(msg) {
   const el = $('toast');
@@ -23,7 +47,7 @@ async function acquireWakeLock() {
     try {
       wakeLock = await navigator.wakeLock.request('screen');
     } catch {
-      // ignore if unsupported or battery saver blocks it
+      // ignore
     }
   }
 }
@@ -63,6 +87,7 @@ async function apiFetch(url, options = {}) {
 }
 
 function showApp() {
+  isLoggedIn = true;
   $('auth-screen').classList.add('hidden');
   $('app-screen').classList.remove('hidden');
   connectWebSocket();
@@ -70,8 +95,10 @@ function showApp() {
 }
 
 function logout() {
+  isLoggedIn = false;
   authToken = '';
   localStorage.removeItem('bd_token');
+  clearTimeout(reconnectTimer);
   if (ws) ws.close();
   $('app-screen').classList.add('hidden');
   $('auth-screen').classList.remove('hidden');
@@ -92,10 +119,29 @@ async function loadInitialData() {
   }
 }
 
+function setConnectionUi(connected) {
+  const dot = $('conn-dot');
+  const label = $('conn-label');
+  if (connected) {
+    dot.classList.remove('reconnecting');
+    label.textContent = 'Connected';
+  } else {
+    dot.classList.add('reconnecting');
+    label.textContent = 'Reconnecting...';
+  }
+}
+
 function connectWebSocket() {
+  if (!isLoggedIn || !authToken) return;
   if (ws) ws.close();
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(`${proto}//${location.host}/ws?token=${encodeURIComponent(authToken)}`);
+
+  ws.onopen = () => {
+    reconnectDelay = 1000;
+    setConnectionUi(true);
+  };
+
   ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data);
     if (msg.type === 'init') {
@@ -109,6 +155,16 @@ function connectWebSocket() {
       logout();
       $('auth-status').textContent = 'Disconnected by PC.';
     }
+  };
+
+  ws.onclose = () => {
+    if (!isLoggedIn) return;
+    setConnectionUi(false);
+    clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(() => {
+      reconnectDelay = Math.min(reconnectDelay * 1.5, 8000);
+      connectWebSocket();
+    }, reconnectDelay);
   };
 }
 
@@ -170,7 +226,7 @@ $('btn-pair').addEventListener('click', async () => {
   }
 });
 
-// Filter pills
+// Filter pills & search
 document.querySelectorAll('.pill').forEach((pill) => {
   pill.addEventListener('click', () => {
     document.querySelectorAll('.pill').forEach((p) => p.classList.remove('active'));
@@ -180,7 +236,11 @@ document.querySelectorAll('.pill').forEach((pill) => {
   });
 });
 
-// Files rendering
+$('file-search').addEventListener('input', (e) => {
+  searchQuery = e.target.value.trim().toLowerCase();
+  renderFiles(filesCache);
+});
+
 function renderFiles(files) {
   filesCache = files;
   $('files-count').textContent = String(files.length);
@@ -191,6 +251,7 @@ function renderFiles(files) {
     if (activeFilter === 'video' && !file.mimeType.startsWith('video/')) return false;
     if (activeFilter === 'image' && !file.mimeType.startsWith('image/')) return false;
     if (activeFilter === 'folder' && !file.isDirectory) return false;
+    if (searchQuery && !file.name.toLowerCase().includes(searchQuery)) return false;
     return true;
   });
 
@@ -198,7 +259,7 @@ function renderFiles(files) {
     const empty = document.createElement('div');
     empty.className = 'muted';
     empty.style.textAlign = 'center';
-    empty.style.padding = '24px';
+    empty.style.padding = '28px';
     empty.textContent = files.length === 0 ? 'No files shared from PC yet.' : 'No files match this filter.';
     list.appendChild(empty);
     return;
@@ -213,6 +274,7 @@ function renderFiles(files) {
 
     const chk = document.createElement('input');
     chk.type = 'checkbox';
+    chk.className = 'custom-chk';
     chk.checked = selectedIds.has(file.id);
     chk.addEventListener('change', () => {
       if (chk.checked) selectedIds.add(file.id);
@@ -225,9 +287,12 @@ function renderFiles(files) {
       const thumb = document.createElement('img');
       thumb.className = 'thumb';
       thumb.loading = 'lazy';
-      thumb.src = `/api/files/${encodeURIComponent(file.id)}/stream`;
+      thumb.src = `/api/files/${encodeURIComponent(file.id)}/stream?token=${encodeURIComponent(authToken)}`;
       thumb.alt = file.name;
       top.appendChild(thumb);
+    } else {
+      const kind = file.isDirectory ? 'folder' : file.mimeType.startsWith('video/') ? 'video' : 'file';
+      top.appendChild(createSvgIcon(kind));
     }
 
     const info = document.createElement('div');
@@ -235,7 +300,7 @@ function renderFiles(files) {
 
     const title = document.createElement('div');
     title.className = 'row-title';
-    title.textContent = `${file.isDirectory ? '📁 ' : ''}${file.name}`;
+    title.textContent = file.name;
 
     const sub = document.createElement('div');
     sub.className = 'row-sub';
@@ -251,15 +316,16 @@ function renderFiles(files) {
     if (!file.isDirectory && file.mimeType.startsWith('video/')) {
       const playBtn = document.createElement('button');
       playBtn.className = 'btn btn-primary btn-sm';
-      playBtn.textContent = '▶ Stream Video';
+      playBtn.textContent = 'Stream Video';
       playBtn.addEventListener('click', () => openVideoModal(file));
       actions.appendChild(playBtn);
     }
 
     const dlLink = document.createElement('a');
     dlLink.className = 'btn btn-sm';
-    dlLink.href = `/api/files/${encodeURIComponent(file.id)}/download`;
-    dlLink.textContent = file.isDirectory ? '⬇ Download .ZIP' : '⬇ Download';
+    dlLink.href = `/api/files/${encodeURIComponent(file.id)}/download?token=${encodeURIComponent(authToken)}`;
+    dlLink.setAttribute('download', file.isDirectory ? `${file.name}.zip` : file.name);
+    dlLink.textContent = file.isDirectory ? 'Download .ZIP' : 'Download';
     actions.appendChild(dlLink);
 
     card.appendChild(top);
@@ -279,16 +345,21 @@ function updateBatchBar() {
   }
 }
 
+$('btn-clear-sel').addEventListener('click', () => {
+  selectedIds.clear();
+  renderFiles(filesCache);
+});
+
 $('btn-download-zip').addEventListener('click', () => {
   if (selectedIds.size === 0) return;
   const ids = Array.from(selectedIds).join(',');
-  location.href = `/api/zip?ids=${encodeURIComponent(ids)}`;
+  location.href = `/api/zip?ids=${encodeURIComponent(ids)}&token=${encodeURIComponent(authToken)}`;
 });
 
 // Video modal
 function openVideoModal(file) {
   $('video-title').textContent = file.name;
-  $('video-player').src = `/api/files/${encodeURIComponent(file.id)}/stream`;
+  $('video-player').src = `/api/files/${encodeURIComponent(file.id)}/stream?token=${encodeURIComponent(authToken)}`;
   $('video-modal').classList.remove('hidden');
 }
 
@@ -300,7 +371,7 @@ $('btn-close-video').addEventListener('click', () => {
   $('video-modal').classList.add('hidden');
 });
 
-// Chunked Upload Engine (2GB+ resumable)
+// Chunked Upload Engine (2GB+ resumable across disconnects)
 $('btn-send-files').addEventListener('click', () => $('file-picker').click());
 $('file-picker').addEventListener('change', (e) => {
   const files = Array.from(e.target.files || []);
@@ -312,6 +383,7 @@ $('file-picker').addEventListener('change', (e) => {
 
 async function startChunkedUpload(file) {
   const localId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const fingerprint = `${file.name}:${file.size}:${file.lastModified}`;
   const state = {
     localId,
     uploadId: null,
@@ -333,7 +405,8 @@ async function startChunkedUpload(file) {
       body: JSON.stringify({
         filename: file.name,
         totalSize: file.size,
-        chunkSize: CHUNK_SIZE
+        chunkSize: CHUNK_SIZE,
+        fingerprint
       })
     });
     const initData = await initRes.json();
@@ -342,10 +415,13 @@ async function startChunkedUpload(file) {
     state.uploadId = initData.uploadId;
     const chunkSize = initData.chunkSize;
     const totalChunks = initData.totalChunks;
+    const completedSet = new Set(initData.receivedChunks || []);
     const startedAt = Date.now();
-    let uploadedBytes = 0;
+    let uploadedBytes = completedSet.size * chunkSize;
 
     for (let idx = 0; idx < totalChunks; idx++) {
+      if (completedSet.has(idx)) continue;
+
       while (state.paused && !state.cancelled) {
         state.status = 'Paused';
         renderUploads();
@@ -358,7 +434,7 @@ async function startChunkedUpload(file) {
       const blob = file.slice(start, end);
 
       let attempt = 0;
-      while (attempt < 3) {
+      while (attempt < 4) {
         try {
           const chunkRes = await apiFetch(`/api/upload/chunk/${state.uploadId}/${idx}`, {
             method: 'PUT',
@@ -368,12 +444,14 @@ async function startChunkedUpload(file) {
           break;
         } catch (err) {
           attempt += 1;
-          if (attempt >= 3) throw err;
-          await new Promise((r) => setTimeout(r, 500 * attempt));
+          if (attempt >= 4) throw err;
+          state.status = `Retrying chunk (${attempt}/3)...`;
+          renderUploads();
+          await new Promise((r) => setTimeout(r, 600 * attempt));
         }
       }
 
-      uploadedBytes += end - start;
+      uploadedBytes = Math.min(file.size, uploadedBytes + (end - start));
       const elapsed = Math.max(0.1, (Date.now() - startedAt) / 1000);
       state.speedBps = uploadedBytes / elapsed;
       state.percent = Math.round((uploadedBytes / file.size) * 100);
