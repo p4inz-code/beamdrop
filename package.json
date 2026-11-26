@@ -1,0 +1,33 @@
+{
+  "name": "beamdrop",
+  "version": "1.0.0",
+  "description": "Zero-cloud, FDM-minimal local Wi-Fi file & 2GB+ video transfer app for PC and mobile.",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "server": "node src/cli.js",
+    "test": "node --test tests/server.test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/p4inz-code/beamdrop.git"
+  },
+  "author": "p4inz-code",
+  "keywords": [
+    "file-sharing",
+    "lan",
+    "wifi-transfer",
+    "video-streaming",
+    "electron",
+    "pwa"
+  ],
+  "license": "GPL-3.0-or-later",
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "qrcode": "^1.5.4",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "electron": "^35.0.0"
+  }
+}

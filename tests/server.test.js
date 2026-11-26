@@ -1,0 +1,282 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const fsp = require('node:fs/promises');
+const path = require('node:path');
+const os = require('node:os');
+const crypto = require('node:crypto');
+const WebSocket = require('ws');
+
+const { BeamDropServer } = require('../src/server');
+const { sanitizeFilename, resolveSafePath, PinRateLimiter } = require('../src/security');
+
+test('Security: sanitizeFilename blocks traversal, null bytes, and Windows reserved names', () => {
+  assert.equal(sanitizeFilename('../../etc/passwd'), 'passwd');
+  assert.equal(sanitizeFilename('..\\..\\Windows\\System32\\cmd.exe'), 'cmd.exe');
+  assert.equal(sanitizeFilename('bad\x00name.mp4'), 'bad_name.mp4');
+  assert.equal(sanitizeFilename('CON.txt'), '_CON.txt');
+  assert.equal(sanitizeFilename('...'), 'unnamed_file');
+});
+
+test('Security: resolveSafePath blocks directory escape', () => {
+  const base = path.join(os.tmpdir(), 'beamdrop_safe_base');
+  const ok = resolveSafePath(base, 'video.mp4');
+  assert.ok(ok.startsWith(path.resolve(base)));
+  assert.throws(() => resolveSafePath(base, '../escape.txt'), /Path traversal/);
+});
+
+test('Security: PinRateLimiter locks out after maxAttempts', () => {
+  const limiter = new PinRateLimiter({ maxAttempts: 3, windowMs: 10_000, lockoutMs: 10_000 });
+  assert.equal(limiter.isLocked('1.2.3.4').locked, false);
+  limiter.recordFailure('1.2.3.4');
+  limiter.recordFailure('1.2.3.4');
+  const third = limiter.recordFailure('1.2.3.4');
+  assert.equal(third.locked, true);
+  assert.equal(limiter.isLocked('1.2.3.4').locked, true);
+  limiter.recordSuccess('1.2.3.4');
+  assert.equal(limiter.isLocked('1.2.3.4').locked, false);
+});
+
+test('Integration: Auth, PIN rate limit, Approval, Chunked Upload SHA-256, 206 Range, ZIP, and WS', async (t) => {
+  const tmpRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'beamdrop-test-'));
+  const saveDir = path.join(tmpRoot, 'save');
+  const shareDir = path.join(tmpRoot, 'share');
+  await fsp.mkdir(shareDir, { recursive: true });
+
+  const server = new BeamDropServer({
+    port: 0,
+    host: '127.0.0.1',
+    saveDir,
+    pin: '4829',
+    requireApproval: true,
+    maxPinAttempts: 3
+  });
+
+  const port = await server.start();
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  t.after(async () => {
+    await server.stop();
+    await fsp.rm(tmpRoot, { recursive: true, force: true });
+  });
+
+  // 1. Unauthenticated access rejected
+  const unauthFiles = await fetch(`${baseUrl}/api/files`);
+  assert.equal(unauthFiles.status, 401);
+
+  // 2. Unauthenticated WebSocket rejected
+  await assert.rejects(
+    () =>
+      new Promise((resolve, reject) => {
+        const ws = new WebSocket(`ws://127.0.0.1:${port}/ws?token=badtoken`);
+        ws.on('open', () => resolve());
+        ws.on('error', (err) => reject(err));
+      })
+  );
+
+  // 3. Brute-force PIN rate limiting
+  for (let i = 0; i < 3; i++) {
+    const r = await fetch(`${baseUrl}/api/auth/pair`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin: '0000', deviceName: 'Attacker' })
+    });
+    assert.equal(r.status, 401);
+  }
+  const lockedRes = await fetch(`${baseUrl}/api/auth/pair`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pin: '4829', deviceName: 'Attacker' })
+  });
+  assert.equal(lockedRes.status, 429);
+
+  // Reset rate limiter for valid pairing test
+  server.rateLimiter.records.clear();
+
+  // 4. Valid PIN + PC Approval flow
+  const pairRes = await fetch(`${baseUrl}/api/auth/pair`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pin: '4829', deviceName: 'TestPhone' })
+  });
+  assert.equal(pairRes.status, 202);
+  const pairData = await pairRes.json();
+  assert.equal(pairData.status, 'pending');
+
+  const pendingStatus = await (await fetch(`${baseUrl}/api/auth/status?challengeId=${pairData.challengeId}`)).json();
+  assert.equal(pendingStatus.status, 'pending');
+
+  assert.equal(server.approveChallenge(pairData.challengeId, true), true);
+  const approvedStatus = await (await fetch(`${baseUrl}/api/auth/status?challengeId=${pairData.challengeId}`)).json();
+  assert.equal(approvedStatus.status, 'approved');
+  const token = approvedStatus.token;
+  assert.ok(token && token.length === 64);
+
+  const authHeaders = { Authorization: `Bearer ${token}` };
+
+  // 5. WebSocket connection + live clipboard broadcast
+  const wsEvents = [];
+  const ws = await new Promise((resolve, reject) => {
+    const client = new WebSocket(`ws://127.0.0.1:${port}/ws?token=${token}`);
+    client.on('open', () => resolve(client));
+    client.on('error', reject);
+  });
+  ws.on('message', (raw) => wsEvents.push(JSON.parse(raw.toString())));
+
+  const clipRes = await fetch(`${baseUrl}/api/clipboard`, {
+    method: 'POST',
+    headers: { ...authHeaders, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: 'https://example.com/video' })
+  });
+  assert.equal(clipRes.status, 200);
+  await new Promise((r) => setTimeout(r, 50));
+  assert.ok(wsEvents.some((e) => e.type === 'clipboard:updated'));
+  ws.close();
+
+  // 6. Chunked upload with traversal filename + SHA-256 verification
+  const payload = crypto.randomBytes(250 * 1024); // 250 KB across 4 x 64KB chunks
+  const expectedHash = crypto.createHash('sha256').update(payload).digest('hex');
+
+  const initRes = await fetch(`${baseUrl}/api/upload/init`, {
+    method: 'POST',
+    headers: { ...authHeaders, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      filename: '../../evil_video.mp4',
+      totalSize: payload.length,
+      chunkSize: 64 * 1024
+    })
+  });
+  assert.equal(initRes.status, 200);
+  const initData = await initRes.json();
+  assert.equal(initData.filename, 'evil_video.mp4');
+  assert.equal(initData.totalChunks, 4);
+
+  // Reject out-of-bounds chunk index
+  const badChunk = await fetch(`${baseUrl}/api/upload/chunk/${initData.uploadId}/99`, {
+    method: 'PUT',
+    headers: authHeaders,
+    body: Buffer.from('abc')
+  });
+  assert.equal(badChunk.status, 400);
+
+  // Upload all 4 chunks
+  for (let i = 0; i < initData.totalChunks; i++) {
+    const start = i * initData.chunkSize;
+    const end = Math.min(start + initData.chunkSize, payload.length);
+    const slice = payload.subarray(start, end);
+    const cRes = await fetch(`${baseUrl}/api/upload/chunk/${initData.uploadId}/${i}`, {
+      method: 'PUT',
+      headers: authHeaders,
+      body: slice
+    });
+    assert.equal(cRes.status, 200);
+  }
+
+  const compRes = await fetch(`${baseUrl}/api/upload/complete/${initData.uploadId}`, {
+    method: 'POST',
+    headers: authHeaders
+  });
+  assert.equal(compRes.status, 200);
+  const compData = await compRes.json();
+  assert.equal(compData.completed, true);
+
+  const savedPath = path.join(saveDir, 'evil_video.mp4');
+  const savedBytes = await fsp.readFile(savedPath);
+  const actualHash = crypto.createHash('sha256').update(savedBytes).digest('hex');
+  assert.equal(actualHash, expectedHash);
+
+  // 7. HTTP 206 Partial Content Range streaming
+  const fileId = compData.file.id;
+  const rangeRes = await fetch(`${baseUrl}/api/files/${fileId}/stream`, {
+    headers: { ...authHeaders, Range: 'bytes=100-199' }
+  });
+  assert.equal(rangeRes.status, 206);
+  assert.equal(rangeRes.headers.get('content-range'), `bytes 100-199/${payload.length}`);
+  const rangeBuf = Buffer.from(await rangeRes.arrayBuffer());
+  assert.deepEqual(rangeBuf, payload.subarray(100, 200));
+
+  // Invalid Range -> 416
+  const badRangeRes = await fetch(`${baseUrl}/api/files/${fileId}/stream`, {
+    headers: { ...authHeaders, Range: `bytes=${payload.length + 10}-` }
+  });
+  assert.equal(badRangeRes.status, 416);
+
+  // 8. Batch ZIP streaming
+  const zipRes = await fetch(`${baseUrl}/api/zip?ids=${fileId}`, { headers: authHeaders });
+  assert.equal(zipRes.status, 200);
+  assert.equal(zipRes.headers.get('content-type'), 'application/zip');
+  const zipBuf = Buffer.from(await zipRes.arrayBuffer());
+  assert.equal(zipBuf.subarray(0, 4).toString('binary'), 'PK\x03\x04');
+
+  // 9. Cross-origin CSRF protection
+  const csrfRes = await fetch(`${baseUrl}/api/clipboard`, {
+    method: 'POST',
+    headers: { ...authHeaders, Origin: 'http://evil.attacker.com', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: 'csrf' })
+  });
+  assert.equal(csrfRes.status, 403);
+
+  // 10. Upload status endpoint (resume support) + 16MB multi-chunk stress test
+  const stressBuf = crypto.randomBytes(16 * 1024 * 1024); // 16 MB across 4 x 4MB chunks
+  const stressHash = crypto.createHash('sha256').update(stressBuf).digest('hex');
+  const sInit = await (await fetch(`${baseUrl}/api/upload/init`, {
+    method: 'POST',
+    headers: { ...authHeaders, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename: 'large_video.mp4', totalSize: stressBuf.length, chunkSize: 4 * 1024 * 1024 })
+  })).json();
+
+  // Upload chunk 0, check status endpoint
+  await fetch(`${baseUrl}/api/upload/chunk/${sInit.uploadId}/0`, {
+    method: 'PUT',
+    headers: authHeaders,
+    body: stressBuf.subarray(0, 4 * 1024 * 1024)
+  });
+  const upStatus = await (await fetch(`${baseUrl}/api/upload/status/${sInit.uploadId}`, { headers: authHeaders })).json();
+  assert.deepEqual(upStatus.receivedChunks, [0]);
+
+  for (let i = 1; i < 4; i++) {
+    const start = i * 4 * 1024 * 1024;
+    await fetch(`${baseUrl}/api/upload/chunk/${sInit.uploadId}/${i}`, {
+      method: 'PUT',
+      headers: authHeaders,
+      body: stressBuf.subarray(start, start + 4 * 1024 * 1024)
+    });
+  }
+  const sComp = await (await fetch(`${baseUrl}/api/upload/complete/${sInit.uploadId}`, {
+    method: 'POST',
+    headers: authHeaders
+  })).json();
+  assert.equal(sComp.completed, true);
+  const stressSavedHash = crypto.createHash('sha256').update(await fsp.readFile(path.join(saveDir, 'large_video.mp4'))).digest('hex');
+  assert.equal(stressSavedHash, stressHash);
+
+  // 11. Outgoing PC -> Phone download tracking event
+  const dlEvents = [];
+  server.on('transfer:update', (ev) => {
+    if (ev.direction === 'download') dlEvents.push(ev);
+  });
+  const dlRes = await fetch(`${baseUrl}/api/files/${sComp.file.id}/download`, { headers: authHeaders });
+  assert.equal(dlRes.status, 200);
+  await dlRes.arrayBuffer();
+  assert.ok(dlEvents.some((e) => e.status === 'completed' && e.receivedBytes === stressBuf.length));
+
+  // 12. Session revocation
+  server.revokeAllSessions();
+  const afterRevoke = await fetch(`${baseUrl}/api/files`, { headers: authHeaders });
+  assert.equal(afterRevoke.status, 401);
+});
+
+test('Resilience: Server falls back cleanly on EADDRINUSE port conflict', async (t) => {
+  const tmpRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'beamdrop-port-'));
+  const s1 = new BeamDropServer({ port: 0, host: '127.0.0.1', saveDir: tmpRoot });
+  const occupiedPort = await s1.start();
+
+  const s2 = new BeamDropServer({ port: occupiedPort, host: '127.0.0.1', saveDir: tmpRoot });
+  const fallbackPort = await s2.start();
+  assert.notEqual(fallbackPort, occupiedPort);
+  assert.ok(fallbackPort > 0);
+
+  await s2.stop();
+  await s1.stop();
+  await fsp.rm(tmpRoot, { recursive: true, force: true });
+});
