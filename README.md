@@ -2,6 +2,7 @@
 <p align="center"><b>Your videos and files, straight across the room.</b><br>A free, open-source, zero-cloud wireless file &amp; 2GB+ video transfer app for Windows PC and Mobile (iOS &amp; Android).</p>
 
 <p align="center">
+  <a href="https://github.com/p4inz-code/beamdrop/releases/latest"><img src="https://img.shields.io/github/v/release/p4inz-code/beamdrop?style=flat-square&labelColor=0f1520&color=f0b45e&label=release" alt="Latest Release"></a>
   <a href="https://github.com/p4inz-code/beamdrop/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/p4inz-code/beamdrop/ci.yml?style=flat-square&labelColor=0f1520&color=10b981&label=ci" alt="CI Status"></a>
   <a href="https://github.com/p4inz-code/beamdrop/stargazers"><img src="https://img.shields.io/github/stars/p4inz-code/beamdrop?style=flat-square&labelColor=0f1520&color=38bdf8&label=stars" alt="Stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/p4inz-code/beamdrop?style=flat-square&labelColor=0f1520&color=f43f5e&label=license" alt="GPLv3 License"></a>
@@ -65,11 +66,13 @@ flowchart LR
 
 ## Quick Start
 
-### Prerequisites
+### Option 1: Download Prebuilt Installer (Recommended)
+Grab the latest installer for **Windows**, **macOS**, or **Linux** from [GitHub Releases](https://github.com/p4inz-code/beamdrop/releases/latest) — no Node.js required.
+
+### Option 2: Run From Source
 - **Node.js v20+** (tested on Node.js v24)
 - PC and Phone on the **same Wi-Fi network** or **Windows Mobile Hotspot**
 
-### Run Locally
 ```bash
 git clone https://github.com/p4inz-code/beamdrop.git
 cd beamdrop
@@ -106,10 +109,14 @@ The automated `node --test` suite verifies:
 
 ## Project Docs
 
-- [Roadmap](ROADMAP.md) — Upcoming `v1.2.0` & `v2.0.0` milestones
+- [Changelog](CHANGELOG.md) — Release history (`v1.2.0`, `v1.0.0`)
+- [Audit Report](AUDIT_REPORT.md) — 5-round quality & security audit (`30 / 30`)
+- [Privacy Policy](PRIVACY.md) — Zero-telemetry & local-only data guarantee
+- [Roadmap](ROADMAP.md) — Upcoming `v1.3.0` & `v2.0.0` milestones
 - [Known Issues](docs/KNOWN_ISSUES.md) — Current platform & network caveats
 - [Security Policy](SECURITY.md) — Threat model & vulnerability reporting
 - [Contributing](CONTRIBUTING.md) — Dev setup & engineering standards
+- [Code of Conduct](CODE_OF_CONDUCT.md) — Community guidelines
 
 ---
 

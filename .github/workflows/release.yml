@@ -24,6 +24,11 @@ jobs:
       - run: npm test
       - name: Build Electron artifacts
         run: npx electron-builder --publish never
+      - name: Generate SHA-256 checksums
+        shell: bash
+        run: |
+          cd dist
+          sha256sum *.exe *.dmg *.AppImage *.deb 2>/dev/null > "SHA256SUMS-${{ matrix.os }}.txt" || true
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v2
         with:
@@ -34,3 +39,4 @@ jobs:
             dist/*.AppImage
             dist/*.deb
             dist/*.yml
+            dist/SHA256SUMS-*.txt
