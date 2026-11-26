@@ -111,6 +111,7 @@ class BeamDropServer extends EventEmitter {
     this.requireApproval = options.requireApproval ?? true;
 
     this.pin = options.pin || generatePin();
+    this.qrSecret = crypto.randomBytes(16).toString('hex');
     this.rateLimiter = new PinRateLimiter({
       maxAttempts: options.maxPinAttempts ?? 5,
       windowMs: 60_000,
@@ -132,6 +133,17 @@ class BeamDropServer extends EventEmitter {
   async init() {
     await fsp.mkdir(this.saveDir, { recursive: true });
     await fsp.mkdir(this.getTempDir(), { recursive: true });
+    // Clean up orphaned .part files from any previous unclean shutdown
+    try {
+      const entries = await fsp.readdir(this.getTempDir());
+      for (const name of entries) {
+        if (name.endsWith('.part')) {
+          await fsp.rm(path.join(this.getTempDir(), name), { force: true }).catch(() => {});
+        }
+      }
+    } catch {
+      // ignore
+    }
   }
 
   getTempDir() {
@@ -146,6 +158,7 @@ class BeamDropServer extends EventEmitter {
 
   regeneratePin() {
     this.pin = generatePin();
+    this.qrSecret = crypto.randomBytes(16).toString('hex');
     this.emit('state:changed');
     return this.pin;
   }
@@ -153,6 +166,27 @@ class BeamDropServer extends EventEmitter {
   setRequireApproval(enabled) {
     this.requireApproval = Boolean(enabled);
     this.emit('state:changed');
+  }
+
+  revokeSessionById(sessionId) {
+    for (const [token, s] of this.sessions.entries()) {
+      if (s.id === sessionId) {
+        this.sessions.delete(token);
+        for (const ws of this.wsClients) {
+          if (ws._bdSessionId === sessionId) {
+            try {
+              ws.send(JSON.stringify({ type: 'session:revoked' }));
+              ws.close(4001, 'Session revoked');
+            } catch {
+              // ignore
+            }
+          }
+        }
+        this.emit('sessions:changed', this.getActiveSessions());
+        return true;
+      }
+    }
+    return false;
   }
 
   revokeAllSessions() {
@@ -175,9 +209,11 @@ class BeamDropServer extends EventEmitter {
 
     if (allow) {
       const token = generateToken();
+      const sessionId = crypto.randomUUID();
       ch.status = 'approved';
       ch.token = token;
       this.sessions.set(token, {
+        id: sessionId,
         token,
         deviceName: ch.deviceName,
         ip: ch.ip,
@@ -192,6 +228,7 @@ class BeamDropServer extends EventEmitter {
 
   getActiveSessions() {
     return Array.from(this.sessions.values()).map((s) => ({
+      id: s.id,
       deviceName: s.deviceName,
       ip: s.ip,
       createdAt: s.createdAt
@@ -280,9 +317,10 @@ class BeamDropServer extends EventEmitter {
 
   async getQrDataUrl(url) {
     return QRCode.toDataURL(url, {
-      width: 240,
+      errorCorrectionLevel: 'Q',
+      width: 280,
       margin: 2,
-      color: { dark: '#0b0f19', light: '#ffffff' }
+      color: { dark: '#090d14', light: '#ffffff' }
     });
   }
 
@@ -502,9 +540,13 @@ class BeamDropServer extends EventEmitter {
 
     const body = await readJsonBody(req, 4096);
     const submittedPin = String(body.pin || '').trim();
+    const submittedQr = String(body.qrSecret || '').trim();
     const deviceName = String(body.deviceName || 'Mobile Device').replace(/[\x00-\x1f\x7f]/g, '').slice(0, 48) || 'Mobile Device';
 
-    if (!timingSafeEqualStr(submittedPin, this.pin)) {
+    const qrValid = Boolean(submittedQr) && timingSafeEqualStr(submittedQr, this.qrSecret);
+    const pinValid = Boolean(submittedPin) && timingSafeEqualStr(submittedPin, this.pin);
+
+    if (!qrValid && !pinValid) {
       const fail = this.rateLimiter.recordFailure(remoteIp);
       return sendJson(res, 401, {
         error: fail.locked
@@ -517,7 +559,8 @@ class BeamDropServer extends EventEmitter {
 
     if (!this.requireApproval) {
       const token = generateToken();
-      this.sessions.set(token, { token, deviceName, ip: remoteIp, createdAt: Date.now() });
+      const sessionId = crypto.randomUUID();
+      this.sessions.set(token, { id: sessionId, token, deviceName, ip: remoteIp, createdAt: Date.now() });
       this.emit('sessions:changed', this.getActiveSessions());
       return sendJson(
         res,
@@ -958,6 +1001,8 @@ class BeamDropServer extends EventEmitter {
       this.handleRequest(req, res);
     });
     this.httpServer.requestTimeout = 0;
+    this.httpServer.keepAliveTimeout = 65_000;
+    this.httpServer.headersTimeout = 66_000;
 
     this.httpServer.on('clientError', (_err, socket) => {
       if (socket.writable) {
@@ -973,13 +1018,17 @@ class BeamDropServer extends EventEmitter {
         return;
       }
       const token = url.searchParams.get('token') || this.getTokenFromRequest(req);
-      if (!token || !this.sessions.has(token)) {
+      const session = token ? this.sessions.get(token) : null;
+      if (!session) {
         socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
         socket.destroy();
         return;
       }
 
       this.wss.handleUpgrade(req, socket, head, (ws) => {
+        ws._bdSessionId = session.id;
+        ws._isAlive = true;
+        ws.on('pong', () => { ws._isAlive = true; });
         this.wsClients.add(ws);
         ws.on('close', () => this.wsClients.delete(ws));
         ws.on('error', () => this.wsClients.delete(ws));
@@ -992,6 +1041,23 @@ class BeamDropServer extends EventEmitter {
         }));
       });
     });
+
+    this.wsHeartbeatTimer = setInterval(() => {
+      for (const ws of this.wsClients) {
+        if (!ws._isAlive) {
+          this.wsClients.delete(ws);
+          ws.terminate();
+          continue;
+        }
+        ws._isAlive = false;
+        try {
+          ws.ping();
+        } catch {
+          // ignore
+        }
+      }
+    }, 25_000);
+    this.wsHeartbeatTimer.unref();
 
     this.cleanupTimer = setInterval(() => {
       const cutoff = Date.now() - 2 * 60 * 60 * 1000;
@@ -1033,6 +1099,7 @@ class BeamDropServer extends EventEmitter {
 
   async stop() {
     if (this.cleanupTimer) clearInterval(this.cleanupTimer);
+    if (this.wsHeartbeatTimer) clearInterval(this.wsHeartbeatTimer);
 
     for (const up of this.uploads.values()) {
       await up.fh.close().catch(() => {});

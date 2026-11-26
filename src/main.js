@@ -28,7 +28,8 @@ async function buildAppState() {
   selectedAddress = activeAddr;
 
   const url = `http://${activeAddr}:${server.port}`;
-  const qrDataUrl = await server.getQrDataUrl(url);
+  const qrUrl = `${url}/?q=${encodeURIComponent(server.qrSecret)}`;
+  const qrDataUrl = await server.getQrDataUrl(qrUrl);
 
   return {
     url,
@@ -148,6 +149,16 @@ function registerIpc() {
   ipcMain.handle('app:revoke-sessions', () => {
     server.revokeAllSessions();
     return true;
+  });
+
+  ipcMain.handle('app:revoke-session', (_e, sessionId) => {
+    return server.revokeSessionById(sessionId);
+  });
+
+  ipcMain.handle('app:refresh-network', async () => {
+    const state = await buildAppState();
+    sendToRenderer('event:state', state);
+    return state;
   });
 
   ipcMain.handle('app:pick-files', async () => {

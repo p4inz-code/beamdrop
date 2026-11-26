@@ -204,7 +204,21 @@ function renderSessions(sessions) {
 
   for (const s of sessions) {
     const li = document.createElement('li');
-    li.textContent = `${s.deviceName} — ${s.ip}`;
+    li.className = 'session-item';
+
+    const label = document.createElement('span');
+    label.textContent = `${s.deviceName} — ${s.ip}`;
+
+    const kickBtn = document.createElement('button');
+    kickBtn.className = 'btn-link danger';
+    kickBtn.textContent = 'Kick';
+    kickBtn.addEventListener('click', () => {
+      window.beamdrop.revokeSession(s.id);
+      showToast(`Disconnected ${s.deviceName}`);
+    });
+
+    li.appendChild(label);
+    li.appendChild(kickBtn);
     list.appendChild(li);
   }
 }
@@ -318,6 +332,10 @@ $('file-search').addEventListener('input', (e) => {
 
 // Controls
 $('iface-select').addEventListener('change', (e) => window.beamdrop.selectInterface(e.target.value));
+$('btn-refresh-net').addEventListener('click', async () => {
+  await window.beamdrop.refreshNetwork();
+  showToast('Network adapters refreshed');
+});
 $('btn-copy-url').addEventListener('click', () => {
   navigator.clipboard.writeText($('server-url').textContent);
   showToast('Server URL copied');

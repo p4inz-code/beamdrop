@@ -221,6 +221,46 @@ body {
   margin-bottom: 5px;
 }
 
+.field-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+.field-row .field-label {
+  margin-bottom: 0;
+}
+
+.btn-icon-xs {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 5px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.btn-icon-xs svg {
+  width: 12px;
+  height: 12px;
+}
+
+.btn-icon-xs:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.session-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+
 .select-input {
   appearance: none;
   width: 100%;

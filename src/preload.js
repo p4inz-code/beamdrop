@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('beamdrop', {
   setRequireApproval: (enabled) => ipcRenderer.invoke('app:set-approval', enabled),
   approveChallenge: (challengeId, allow) => ipcRenderer.invoke('app:approve-challenge', { challengeId, allow }),
   revokeSessions: () => ipcRenderer.invoke('app:revoke-sessions'),
+  revokeSession: (sessionId) => ipcRenderer.invoke('app:revoke-session', sessionId),
+  refreshNetwork: () => ipcRenderer.invoke('app:refresh-network'),
   pickFiles: () => ipcRenderer.invoke('app:pick-files'),
   pickFolder: () => ipcRenderer.invoke('app:pick-folder'),
   pickSaveDir: () => ipcRenderer.invoke('app:pick-save-dir'),

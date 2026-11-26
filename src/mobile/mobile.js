@@ -34,6 +34,28 @@ function createSvgIcon(kind) {
   return svg;
 }
 
+function copyTextFallback(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text).catch(() => legacyCopy(text));
+  }
+  return legacyCopy(text);
+}
+
+function legacyCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+  } catch {
+    // ignore
+  }
+  document.body.removeChild(ta);
+}
+
 function showToast(msg) {
   const el = $('toast');
   el.textContent = msg;
@@ -168,22 +190,16 @@ function connectWebSocket() {
   };
 }
 
-// Pairing
-$('btn-pair').addEventListener('click', async () => {
-  const pin = $('pin-input').value.trim();
-  if (pin.length !== 4) {
-    $('auth-status').textContent = 'Enter 4-digit PIN.';
-    return;
-  }
-
+// Pairing (PIN or QR Secret)
+async function submitPair({ pin = '', qrSecret = '' }) {
   $('btn-pair').disabled = true;
-  $('auth-status').textContent = 'Verifying PIN...';
+  $('auth-status').textContent = qrSecret ? 'Verifying QR code...' : 'Verifying PIN...';
 
   try {
     const res = await fetch('/api/auth/pair', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pin, deviceName: detectDeviceName() })
+      body: JSON.stringify({ pin, qrSecret, deviceName: detectDeviceName() })
     });
     const data = await res.json();
     if (!res.ok) {
@@ -224,6 +240,15 @@ $('btn-pair').addEventListener('click', async () => {
     $('auth-status').textContent = 'Network error.';
     $('btn-pair').disabled = false;
   }
+}
+
+$('btn-pair').addEventListener('click', () => {
+  const pin = $('pin-input').value.trim();
+  if (pin.length !== 4) {
+    $('auth-status').textContent = 'Enter 4-digit PIN.';
+    return;
+  }
+  submitPair({ pin });
 });
 
 // Filter pills & search
@@ -418,46 +443,60 @@ async function startChunkedUpload(file) {
     const completedSet = new Set(initData.receivedChunks || []);
     const startedAt = Date.now();
     let uploadedBytes = completedSet.size * chunkSize;
-
+    const pendingIndices = [];
     for (let idx = 0; idx < totalChunks; idx++) {
-      if (completedSet.has(idx)) continue;
-
-      while (state.paused && !state.cancelled) {
-        state.status = 'Paused';
-        renderUploads();
-        await new Promise((r) => setTimeout(r, 300));
-      }
-      if (state.cancelled) return;
-
-      const start = idx * chunkSize;
-      const end = Math.min(start + chunkSize, file.size);
-      const blob = file.slice(start, end);
-
-      let attempt = 0;
-      while (attempt < 4) {
-        try {
-          const chunkRes = await apiFetch(`/api/upload/chunk/${state.uploadId}/${idx}`, {
-            method: 'PUT',
-            body: blob
-          });
-          if (!chunkRes.ok) throw new Error('Chunk failed');
-          break;
-        } catch (err) {
-          attempt += 1;
-          if (attempt >= 4) throw err;
-          state.status = `Retrying chunk (${attempt}/3)...`;
-          renderUploads();
-          await new Promise((r) => setTimeout(r, 600 * attempt));
-        }
-      }
-
-      uploadedBytes = Math.min(file.size, uploadedBytes + (end - start));
-      const elapsed = Math.max(0.1, (Date.now() - startedAt) / 1000);
-      state.speedBps = uploadedBytes / elapsed;
-      state.percent = Math.round((uploadedBytes / file.size) * 100);
-      state.status = `${state.percent}% · ${(state.speedBps / (1024 * 1024)).toFixed(1)} MB/s`;
-      renderUploads();
+      if (!completedSet.has(idx)) pendingIndices.push(idx);
     }
+
+    let cursor = 0;
+    const CONCURRENCY = Math.min(3, Math.max(1, pendingIndices.length));
+
+    const worker = async () => {
+      while (cursor < pendingIndices.length) {
+        while (state.paused && !state.cancelled) {
+          state.status = 'Paused';
+          renderUploads();
+          await new Promise((r) => setTimeout(r, 300));
+        }
+        if (state.cancelled) return;
+
+        const pos = cursor++;
+        if (pos >= pendingIndices.length) return;
+        const idx = pendingIndices[pos];
+
+        const start = idx * chunkSize;
+        const end = Math.min(start + chunkSize, file.size);
+        const blob = file.slice(start, end);
+
+        let attempt = 0;
+        while (attempt < 4) {
+          try {
+            const chunkRes = await apiFetch(`/api/upload/chunk/${state.uploadId}/${idx}`, {
+              method: 'PUT',
+              body: blob
+            });
+            if (!chunkRes.ok) throw new Error('Chunk failed');
+            break;
+          } catch (err) {
+            attempt += 1;
+            if (attempt >= 4) throw err;
+            state.status = `Retrying chunk (${attempt}/3)...`;
+            renderUploads();
+            await new Promise((r) => setTimeout(r, 600 * attempt));
+          }
+        }
+
+        uploadedBytes = Math.min(file.size, uploadedBytes + (end - start));
+        const elapsed = Math.max(0.1, (Date.now() - startedAt) / 1000);
+        state.speedBps = uploadedBytes / elapsed;
+        state.percent = Math.round((uploadedBytes / file.size) * 100);
+        state.status = `${state.percent}% · ${(state.speedBps / (1024 * 1024)).toFixed(1)} MB/s`;
+        renderUploads();
+      }
+    };
+
+    await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
+    if (state.cancelled) return;
 
     const compRes = await apiFetch(`/api/upload/complete/${state.uploadId}`, { method: 'POST' });
     if (!compRes.ok) throw new Error('Finalize failed');
@@ -562,7 +601,7 @@ function renderClipboard(entries) {
     copyBtn.className = 'btn btn-sm';
     copyBtn.textContent = 'Copy';
     copyBtn.addEventListener('click', () => {
-      navigator.clipboard?.writeText(entry.text);
+      copyTextFallback(entry.text);
       showToast('Copied to clipboard');
     });
 
@@ -597,8 +636,18 @@ document.querySelectorAll('.tab').forEach((tab) => {
 
 $('btn-disconnect').addEventListener('click', logout);
 
+const urlParams = new URLSearchParams(location.search);
+const qrSecretParam = urlParams.get('q');
+if (qrSecretParam) {
+  history.replaceState({}, '', '/');
+}
+
 if (authToken) {
   apiFetch('/api/auth/me')
     .then((r) => (r.ok ? showApp() : logout()))
-    .catch(() => logout());
+    .catch(() => {
+      if (qrSecretParam) submitPair({ qrSecret: qrSecretParam });
+    });
+} else if (qrSecretParam) {
+  submitPair({ qrSecret: qrSecretParam });
 }

@@ -273,7 +273,59 @@ test('Integration: Auth, PIN rate limit, Approval, Chunked Upload SHA-256, 206 R
   await new Promise((r) => setTimeout(r, 50));
   assert.ok(dlEvents.some((e) => e.status === 'completed' && e.receivedBytes === stressBuf.length));
 
-  // 12. Session revocation
+  // 12. QR Secret pairing + per-session kick + orphan .part cleanup
+  const badQrRes = await fetch(`${baseUrl}/api/auth/pair`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ qrSecret: 'wrong-qr-secret', deviceName: 'BadQR' })
+  });
+  assert.equal(badQrRes.status, 401);
+  server.rateLimiter.records.clear();
+
+  const qrPairRes = await fetch(`${baseUrl}/api/auth/pair`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ qrSecret: server.qrSecret, deviceName: 'QRPhone' })
+  });
+  assert.equal(qrPairRes.status, 202);
+  const qrPairData = await qrPairRes.json();
+  assert.equal(server.approveChallenge(qrPairData.challengeId, true), true);
+  const qrStatus = await (await fetch(`${baseUrl}/api/auth/status?challengeId=${qrPairData.challengeId}`)).json();
+  assert.equal(qrStatus.status, 'approved');
+
+  const sessionsBeforeKick = server.getActiveSessions();
+  const qrSess = sessionsBeforeKick.find((s) => s.deviceName === 'QRPhone');
+  assert.ok(qrSess);
+  assert.equal(server.revokeSessionById(qrSess.id), true);
+  const kickedCheck = await fetch(`${baseUrl}/api/files`, {
+    headers: { Authorization: `Bearer ${qrStatus.token}` }
+  });
+  assert.equal(kickedCheck.status, 401);
+
+  // 13. Parallel out-of-order chunk upload (simulating 3-worker mobile upload)
+  const parBuf = crypto.randomBytes(12 * 1024 * 1024); // 12 MB = 3 x 4MB
+  const parHash = crypto.createHash('sha256').update(parBuf).digest('hex');
+  const pInit = await (await fetch(`${baseUrl}/api/upload/init`, {
+    method: 'POST',
+    headers: { ...authHeaders, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename: 'parallel.mp4', totalSize: parBuf.length, chunkSize: 4 * 1024 * 1024 })
+  })).json();
+  await Promise.all([2, 0, 1].map((idx) =>
+    fetch(`${baseUrl}/api/upload/chunk/${pInit.uploadId}/${idx}`, {
+      method: 'PUT',
+      headers: authHeaders,
+      body: parBuf.subarray(idx * 4 * 1024 * 1024, (idx + 1) * 4 * 1024 * 1024)
+    }).then((r) => assert.equal(r.status, 200))
+  ));
+  const pComp = await (await fetch(`${baseUrl}/api/upload/complete/${pInit.uploadId}`, {
+    method: 'POST',
+    headers: authHeaders
+  })).json();
+  assert.equal(pComp.completed, true);
+  const parSavedHash = crypto.createHash('sha256').update(await fsp.readFile(path.join(saveDir, 'parallel.mp4'))).digest('hex');
+  assert.equal(parSavedHash, parHash);
+
+  // 14. Session revocation
   server.revokeAllSessions();
   const afterRevoke = await fetch(`${baseUrl}/api/files`, { headers: authHeaders });
   assert.equal(afterRevoke.status, 401);
