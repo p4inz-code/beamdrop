@@ -6,6 +6,7 @@ const PAGE_SIZE = 50;
 let allFiles = [];
 let visibleLimit = PAGE_SIZE;
 let currentQrUrl = '';
+let currentState = null;
 let activeFilter = 'all';
 let searchQuery = '';
 let toastTimer = null;
@@ -67,12 +68,36 @@ function getFileKind(file) {
 }
 
 function renderState(state) {
+  currentState = state;
   currentQrUrl = state.qrUrl || state.url;
   $('qr-img').src = state.qrDataUrl;
+  $('qr-large-img').src = state.qrDataUrl;
   $('server-url').textContent = state.url;
+  $('qr-large-url').textContent = state.url;
   $('pin-code').textContent = state.pin;
   $('chk-approval').checked = state.requireApproval;
   $('save-dir-path').textContent = state.saveDir;
+
+  const mdnsEl = $('mdns-pill');
+  if (state.mdnsUrl) {
+    mdnsEl.textContent = state.mdnsUrl;
+    mdnsEl.classList.remove('hidden');
+  } else {
+    mdnsEl.classList.add('hidden');
+  }
+
+  const dot = $('lan-status-dot');
+  const txt = $('lan-status-text');
+  if (!state.lanReachable) {
+    dot.classList.add('warn');
+    txt.textContent = 'Check Firewall';
+  } else if (state.vpnDetected) {
+    dot.classList.add('warn');
+    txt.textContent = 'VPN Active';
+  } else {
+    dot.classList.remove('warn');
+    txt.textContent = state.useHttps ? 'HTTPS Ready' : 'LAN Ready';
+  }
 
   const select = $('iface-select');
   select.textContent = '';
@@ -501,6 +526,66 @@ document.body.addEventListener('drop', async (e) => {
   if (paths.length > 0) {
     await window.beamdrop.addPaths(paths);
     showToast(`Added ${paths.length} item(s)`);
+  }
+});
+
+// Modals, Network Tools & Keyboard Shortcuts
+$('qr-img').addEventListener('click', () => $('qr-modal').classList.remove('hidden'));
+$('btn-close-qr').addEventListener('click', () => $('qr-modal').classList.add('hidden'));
+
+$('btn-open-settings').addEventListener('click', () => {
+  if (currentState && currentState.settings) {
+    const s = currentState.settings;
+    $('set-port').value = String(s.port);
+    $('set-mdns').checked = Boolean(s.enableMdns);
+    $('set-https').checked = Boolean(s.useHttps);
+    $('set-login').checked = Boolean(s.launchAtLogin);
+    $('set-remux').checked = Boolean(s.ffmpegRemux);
+    $('set-remux').disabled = !currentState.ffmpegAvailable;
+  }
+  $('settings-modal').classList.remove('hidden');
+});
+$('btn-close-settings').addEventListener('click', () => $('settings-modal').classList.add('hidden'));
+
+$('btn-save-settings').addEventListener('click', async () => {
+  const port = Number($('set-port').value);
+  await window.beamdrop.updateSettings({
+    port,
+    enableMdns: $('set-mdns').checked,
+    useHttps: $('set-https').checked,
+    launchAtLogin: $('set-login').checked,
+    ffmpegRemux: $('set-remux').checked
+  });
+  $('settings-modal').classList.add('hidden');
+  showToast('Settings saved');
+});
+
+$('btn-copy-diag').addEventListener('click', async () => {
+  const report = await window.beamdrop.getDiagnostics();
+  navigator.clipboard.writeText(report);
+  showToast('Diagnostics copied');
+});
+
+$('btn-fix-fw').addEventListener('click', async () => {
+  const ok = await window.beamdrop.fixFirewall();
+  showToast(ok ? 'Firewall rule added' : 'Firewall prompt cancelled');
+});
+
+$('btn-open-hotspot').addEventListener('click', () => window.beamdrop.openHotspot());
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    $('qr-modal').classList.add('hidden');
+    $('settings-modal').classList.add('hidden');
+  } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'o') {
+    e.preventDefault();
+    window.beamdrop.pickFolder();
+  } else if (e.ctrlKey && e.key.toLowerCase() === 'o') {
+    e.preventDefault();
+    window.beamdrop.pickFiles();
+  } else if (e.ctrlKey && e.key.toLowerCase() === 'f') {
+    e.preventDefault();
+    $('file-search').focus();
   }
 });
 

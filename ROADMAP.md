@@ -10,6 +10,14 @@
 
 ---
 
+## v1.3.0 (Shipped)
+- [x] **mDNS (`beamdrop.local`) & Optional Local HTTPS** (`bonjour-service` + `selfsigned`)
+- [x] **Branded App Icon (`build/icon.png`)** + **Plain Unpacked `.zip` Windows Build** + `SHA256SUMS`
+- [x] **1-Click Firewall Helper**, **Hotspot Shortcut**, **Auto-Adapter Watcher**, & **LAN Reachability Probe**
+- [x] **`Open in VLC`** deep link & **Optional Zero-Reencode FFmpeg Remux (`/remux`)**
+- [x] **Persistent Settings**, **Rotating Diagnostics Logger**, **Fullscreen QR**, & **Keyboard Shortcuts**
+- [x] **End-to-End SHA-256 Upload Verification** & **Windows `\\?\` Long-Path Support**
+
 ## v1.2.0 (Shipped)
 - [x] **Trusted Device Memory**: 1-tap reconnect via cryptographic `trustKey` + `Forget` management
 - [x] **`powerSaveBlocker`**: Prevent PC sleep during active 2GB+ transfers

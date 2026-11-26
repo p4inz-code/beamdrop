@@ -1,30 +1,59 @@
 // BeamDrop — Copyright (C) 2026 Atharva Patil (p4inz-code) | https://github.com/p4inz-code/beamdrop
 // Licensed under GNU GPL-3.0-or-later. See LICENSE and NOTICE for details.
 
-const { app, BrowserWindow, Tray, Menu, ipcMain, dialog, shell, nativeImage, powerSaveBlocker, clipboard, Notification } = require('electron');
+const {
+  app,
+  BrowserWindow,
+  Tray,
+  Menu,
+  ipcMain,
+  dialog,
+  shell,
+  nativeImage,
+  powerSaveBlocker,
+  clipboard,
+  Notification
+} = require('electron');
 const path = require('path');
-const os = require('os');
+const fs = require('fs');
+const { execFile } = require('child_process');
 const { BeamDropServer } = require('./server');
-const { getNetworkInterfaces } = require('./network');
+const {
+  getNetworkInterfaces,
+  probeLanReachability,
+  MdnsAdvertiser,
+  getOrCreateLocalCert
+} = require('./network');
+const { SettingsStore } = require('./settings');
+const { DiagnosticsLogger } = require('./logger');
 
 let mainWindow = null;
 let tray = null;
 let server = null;
+let settingsStore = null;
+let logger = null;
+let mdns = null;
 let selectedAddress = null;
 let isQuitting = false;
 let powerSaveId = null;
+let adapterWatchTimer = null;
+let lastAdapterSig = '';
 const activeTransferIds = new Set();
 
-function createTrayIcon() {
-  // Minimal 16x16 SVG icon rendered to nativeImage so no external icon asset is required
+function getAppIcon() {
+  const iconPath = path.join(__dirname, '..', 'build', 'icon.png');
+  if (fs.existsSync(iconPath)) {
+    return nativeImage.createFromPath(iconPath);
+  }
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
-    <rect width="32" height="32" rx="7" fill="#0f172a"/>
-    <path d="M16 6v14m0-14l-5 5m5-5l5 5M8 22v3h16v-3" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <rect width="32" height="32" rx="7" fill="#090d14"/>
+    <path d="M17 5L9 17h6l-1 10 9-12h-6l1-10z" fill="#38bdf8"/>
   </svg>`;
   return nativeImage.createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`);
 }
 
 async function buildAppState() {
+  const settings = settingsStore.get();
   const net = getNetworkInterfaces();
   const activeAddr =
     selectedAddress && net.interfaces.some((i) => i.address === selectedAddress)
@@ -32,16 +61,28 @@ async function buildAppState() {
       : net.recommended.address;
   selectedAddress = activeAddr;
 
-  const url = `http://${activeAddr}:${server.port}`;
+  const proto = settings.useHttps ? 'https' : 'http';
+  const url = `${proto}://${activeAddr}:${server.port}`;
+  const mdnsUrl = settings.enableMdns ? `${proto}://beamdrop.local:${server.port}` : null;
   const qrUrl = `${url}/?q=${encodeURIComponent(server.qrSecret)}`;
-  const qrDataUrl = await server.getQrDataUrl(qrUrl);
+  const [qrDataUrl, lanReachable] = await Promise.all([
+    server.getQrDataUrl(qrUrl),
+    probeLanReachability(activeAddr, server.port, settings.useHttps)
+  ]);
 
   return {
     url,
+    mdnsUrl,
     qrUrl,
     qrDataUrl,
     pin: server.pin,
     port: server.port,
+    useHttps: settings.useHttps,
+    lanReachable,
+    vpnDetected: net.vpnDetected,
+    vpnNames: net.vpnNames,
+    ffmpegAvailable: server.ffmpegAvailable,
+    settings,
     requireApproval: server.requireApproval,
     saveDir: server.saveDir,
     interfaces: net.interfaces,
@@ -61,12 +102,13 @@ function sendToRenderer(channel, payload) {
 
 async function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1060,
-    height: 720,
+    width: 1080,
+    height: 740,
     minWidth: 840,
     minHeight: 580,
     frame: false,
-    backgroundColor: '#090d16',
+    icon: getAppIcon(),
+    backgroundColor: '#090d14',
     title: 'BeamDrop',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -77,11 +119,15 @@ async function createWindow() {
     }
   });
 
-  // Block unexpected navigation or popups inside Electron
   mainWindow.webContents.on('will-navigate', (e, url) => {
     if (!url.startsWith('file://')) e.preventDefault();
   });
-  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) {
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
 
   mainWindow.on('close', (e) => {
     if (!isQuitting && tray) {
@@ -94,7 +140,7 @@ async function createWindow() {
 }
 
 function createTray() {
-  tray = new Tray(createTrayIcon());
+  tray = new Tray(getAppIcon().resize({ width: 16, height: 16 }));
   tray.setToolTip('BeamDrop — Wireless File & Video Share');
   const menu = Menu.buildFromTemplate([
     { label: 'Open BeamDrop', click: () => mainWindow?.show() },
@@ -114,6 +160,65 @@ function createTray() {
       else mainWindow.show();
     }
   });
+}
+
+async function startServerFromSettings() {
+  const settings = settingsStore.get();
+  const net = getNetworkInterfaces();
+  let tlsOptions = null;
+  if (settings.useHttps) {
+    const certDir = path.join(app.getPath('userData'), 'certs');
+    tlsOptions = await getOrCreateLocalCert(certDir, net.interfaces.map((i) => i.address));
+  }
+
+  const trustedStorePath = path.join(app.getPath('userData'), 'trusted_devices.json');
+  const port = process.env.BEAMDROP_PORT !== undefined ? Number(process.env.BEAMDROP_PORT) : settings.port;
+
+  server = new BeamDropServer({
+    port,
+    saveDir: settings.saveDir,
+    trustedStorePath,
+    tlsOptions,
+    logger,
+    ffmpegRemux: settings.ffmpegRemux,
+    requireApproval: settings.requireApproval
+  });
+
+  server.on('files:changed', (files) => sendToRenderer('event:files', files));
+  server.on('state:changed', async () => sendToRenderer('event:state', await buildAppState()));
+  server.on('sessions:changed', (s) => sendToRenderer('event:sessions', s));
+  server.on('clipboard:changed', (c) => sendToRenderer('event:clipboard', c));
+  server.on('auth:challenge', (ch) => {
+    if (mainWindow && !mainWindow.isVisible()) mainWindow.show();
+    sendToRenderer('event:challenge', ch);
+  });
+  server.on('transfer:update', (t) => {
+    if (t.status === 'active') {
+      activeTransferIds.add(t.id);
+      if (powerSaveId === null) {
+        powerSaveId = powerSaveBlocker.start('prevent-app-suspension');
+      }
+    } else {
+      activeTransferIds.delete(t.id);
+      if (activeTransferIds.size === 0 && powerSaveId !== null) {
+        powerSaveBlocker.stop(powerSaveId);
+        powerSaveId = null;
+      }
+      if (t.status === 'completed' && t.direction === 'upload' && (t.totalSize || 0) >= 10 * 1024 * 1024) {
+        if (mainWindow && (!mainWindow.isVisible() || !mainWindow.isFocused()) && Notification.isSupported()) {
+          new Notification({ title: 'BeamDrop Transfer Complete', body: `${t.filename} saved to PC.` }).show();
+        }
+      }
+    }
+    sendToRenderer('event:transfer', t);
+  });
+
+  await server.start();
+  if (settings.enableMdns) {
+    mdns.start({ port: server.port, useHttps: settings.useHttps });
+  } else {
+    mdns.stop();
+  }
 }
 
 function registerIpc() {
@@ -144,6 +249,31 @@ function registerIpc() {
 
   ipcMain.handle('app:set-approval', async (_e, enabled) => {
     server.setRequireApproval(enabled);
+    await settingsStore.update({ requireApproval: Boolean(enabled) });
+    const state = await buildAppState();
+    sendToRenderer('event:state', state);
+    return state;
+  });
+
+  ipcMain.handle('app:update-settings', async (_e, patch) => {
+    const prev = settingsStore.get();
+    const next = await settingsStore.update(patch);
+    if (prev.launchAtLogin !== next.launchAtLogin && app.isPackaged) {
+      app.setLoginItemSettings({ openAtLogin: next.launchAtLogin });
+    }
+    if (prev.saveDir !== next.saveDir) {
+      await server.setSaveDir(next.saveDir);
+    }
+    server.ffmpegRemux = next.ffmpegRemux;
+
+    const needsRestart = prev.port !== next.port || prev.useHttps !== next.useHttps;
+    if (needsRestart) {
+      await server.stop();
+      await startServerFromSettings();
+    } else if (prev.enableMdns !== next.enableMdns) {
+      if (next.enableMdns) mdns.start({ port: server.port, useHttps: next.useHttps });
+      else mdns.stop();
+    }
     const state = await buildAppState();
     sendToRenderer('event:state', state);
     return state;
@@ -153,19 +283,14 @@ function registerIpc() {
     return server.approveChallenge(challengeId, allow, Boolean(trust));
   });
 
-  ipcMain.handle('app:revoke-trusted', (_e, id) => {
-    return server.revokeTrustedDevice(id);
-  });
-
+  ipcMain.handle('app:revoke-trusted', (_e, id) => server.revokeTrustedDevice(id));
   ipcMain.handle('app:clear-shared', () => {
     server.clearSharedItems();
     return true;
   });
 
   ipcMain.handle('app:show-in-folder', (_e, filePath) => {
-    if (typeof filePath === 'string' && filePath) {
-      shell.showItemInFolder(filePath);
-    }
+    if (typeof filePath === 'string' && filePath) shell.showItemInFolder(filePath);
   });
 
   ipcMain.handle('app:paste-send-clipboard', () => {
@@ -179,9 +304,7 @@ function registerIpc() {
     return true;
   });
 
-  ipcMain.handle('app:revoke-session', (_e, sessionId) => {
-    return server.revokeSessionById(sessionId);
-  });
+  ipcMain.handle('app:revoke-session', (_e, sessionId) => server.revokeSessionById(sessionId));
 
   ipcMain.handle('app:refresh-network', async () => {
     const state = await buildAppState();
@@ -189,31 +312,53 @@ function registerIpc() {
     return state;
   });
 
-  ipcMain.handle('app:pick-files', async () => {
-    const res = await dialog.showOpenDialog(mainWindow, {
-      properties: ['openFile', 'multiSelections']
+  ipcMain.handle('app:fix-firewall', () => {
+    if (process.platform !== 'win32') return false;
+    const port = Number(server.port);
+    if (!Number.isInteger(port) || port <= 0) return false;
+    const cmd = `Start-Process netsh -Verb RunAs -ArgumentList 'advfirewall','firewall','add','rule','name=BeamDrop','dir=in','action=allow','protocol=TCP','localport=${port}'`;
+    return new Promise((resolve) => {
+      execFile('powershell.exe', ['-NoProfile', '-Command', cmd], (err) => {
+        if (err) logger.warn('Firewall', `Firewall rule error: ${err.message}`);
+        else logger.info('Firewall', `Requested allow rule for TCP ${port}`);
+        resolve(!err);
+      });
     });
-    if (!res.canceled && res.filePaths.length > 0) {
-      await server.addSharedPaths(res.filePaths, 'pc');
+  });
+
+  ipcMain.handle('app:open-hotspot', () => {
+    if (process.platform === 'win32') {
+      return shell.openExternal('ms-settings:network-mobilehotspot');
     }
+    return false;
+  });
+
+  ipcMain.handle('app:get-diagnostics', async () => {
+    const net = getNetworkInterfaces();
+    return logger.getDiagnosticsReport({
+      version: app.getVersion(),
+      port: server.port,
+      useHttps: settingsStore.get().useHttps,
+      interfaces: net.interfaces
+    });
+  });
+
+  ipcMain.handle('app:pick-files', async () => {
+    const res = await dialog.showOpenDialog(mainWindow, { properties: ['openFile', 'multiSelections'] });
+    if (!res.canceled && res.filePaths.length > 0) await server.addSharedPaths(res.filePaths, 'pc');
     return server.getPublicFileList();
   });
 
   ipcMain.handle('app:pick-folder', async () => {
-    const res = await dialog.showOpenDialog(mainWindow, {
-      properties: ['openDirectory', 'multiSelections']
-    });
-    if (!res.canceled && res.filePaths.length > 0) {
-      await server.addSharedPaths(res.filePaths, 'pc');
-    }
+    const res = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory', 'multiSelections'] });
+    if (!res.canceled && res.filePaths.length > 0) await server.addSharedPaths(res.filePaths, 'pc');
     return server.getPublicFileList();
   });
 
   ipcMain.handle('app:pick-save-dir', async () => {
-    const res = await dialog.showOpenDialog(mainWindow, {
-      properties: ['openDirectory', 'createDirectory']
-    });
+    const res = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory', 'createDirectory'] });
     if (!res.canceled && res.filePaths[0]) {
+      await settingsStore.update({ saveDir: res.filePaths[0] });
       await server.setSaveDir(res.filePaths[0]);
       const state = await buildAppState();
       sendToRenderer('event:state', state);
@@ -221,83 +366,56 @@ function registerIpc() {
     return server.saveDir;
   });
 
-  ipcMain.handle('app:open-save-dir', () => {
-    return shell.openPath(server.saveDir);
-  });
-
+  ipcMain.handle('app:open-save-dir', () => shell.openPath(server.saveDir));
   ipcMain.handle('app:add-paths', async (_e, paths) => {
-    if (Array.isArray(paths)) {
-      await server.addSharedPaths(paths, 'pc');
-    }
+    if (Array.isArray(paths)) await server.addSharedPaths(paths, 'pc');
     return server.getPublicFileList();
   });
-
-  ipcMain.handle('app:remove-shared', (_e, id) => {
-    return server.removeSharedItem(id);
-  });
-
-  ipcMain.handle('app:send-clipboard', (_e, text) => {
-    return server.addClipboardEntry(text, 'PC');
-  });
+  ipcMain.handle('app:remove-shared', (_e, id) => server.removeSharedItem(id));
+  ipcMain.handle('app:send-clipboard', (_e, text) => server.addClipboardEntry(text, 'PC'));
 }
 
 process.on('uncaughtException', (err) => {
+  logger?.error('Main', `Uncaught exception: ${err.message}`);
   console.error('[BeamDrop Main Error]', err);
 });
 process.on('unhandledRejection', (err) => {
+  logger?.error('Main', `Unhandled rejection: ${err}`);
   console.error('[BeamDrop Unhandled Rejection]', err);
 });
 
 app.whenReady().then(async () => {
-  const defaultSaveDir = path.join(os.homedir(), 'Downloads', 'BeamDrop');
-  const trustedStorePath = path.join(app.getPath('userData'), 'trusted_devices.json');
-  server = new BeamDropServer({
-    port: Number(process.env.BEAMDROP_PORT || 5050),
-    saveDir: defaultSaveDir,
-    trustedStorePath,
-    requireApproval: true
-  });
+  const userData = app.getPath('userData');
+  logger = new DiagnosticsLogger(path.join(userData, 'logs'));
+  await logger.init();
 
-  server.on('files:changed', (files) => sendToRenderer('event:files', files));
-  server.on('state:changed', async () => sendToRenderer('event:state', await buildAppState()));
-  server.on('transfer:update', (t) => {
-    if (t.status === 'active') {
-      activeTransferIds.add(t.id);
-      if (powerSaveId === null) {
-        powerSaveId = powerSaveBlocker.start('prevent-app-suspension');
-      }
-    } else {
-      activeTransferIds.delete(t.id);
-      if (activeTransferIds.size === 0 && powerSaveId !== null) {
-        powerSaveBlocker.stop(powerSaveId);
-        powerSaveId = null;
-      }
-      if (t.status === 'completed' && t.direction === 'upload' && (t.totalSize || 0) >= 10 * 1024 * 1024) {
-        if (mainWindow && (!mainWindow.isVisible() || !mainWindow.isFocused()) && Notification.isSupported()) {
-          new Notification({ title: 'BeamDrop Transfer Complete', body: `${t.filename} saved to PC.` }).show();
-        }
-      }
-    }
-    sendToRenderer('event:transfer', t);
-  });
-  server.on('auth:challenge', (ch) => {
-    if (mainWindow && !mainWindow.isVisible()) mainWindow.show();
-    sendToRenderer('event:challenge', ch);
-  });
-  server.on('sessions:changed', (s) => sendToRenderer('event:sessions', s));
-  server.on('clipboard:changed', (c) => sendToRenderer('event:clipboard', c));
+  settingsStore = new SettingsStore(path.join(userData, 'settings.json'));
+  await settingsStore.load();
+  mdns = new MdnsAdvertiser();
 
-  await server.start();
+  await startServerFromSettings();
   registerIpc();
   createTray();
   await createWindow();
+
+  // Lightweight 5s network adapter watcher (auto-updates QR/URL when Hotspot or Wi-Fi changes)
+  lastAdapterSig = getNetworkInterfaces().interfaces.map((i) => `${i.name}:${i.address}`).join('|');
+  adapterWatchTimer = setInterval(async () => {
+    const sig = getNetworkInterfaces().interfaces.map((i) => `${i.name}:${i.address}`).join('|');
+    if (sig !== lastAdapterSig) {
+      lastAdapterSig = sig;
+      logger.info('Network', 'Adapter configuration changed');
+      sendToRenderer('event:state', await buildAppState());
+    }
+  }, 5000);
+  adapterWatchTimer.unref();
 });
 
 app.on('before-quit', async () => {
   isQuitting = true;
-  if (server) {
-    await server.stop();
-  }
+  if (adapterWatchTimer) clearInterval(adapterWatchTimer);
+  mdns?.stop();
+  if (server) await server.stop();
 });
 
 app.on('window-all-closed', () => {

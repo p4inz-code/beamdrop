@@ -1,3 +1,6 @@
+// BeamDrop — Copyright (C) 2026 Atharva Patil (p4inz-code) | https://github.com/p4inz-code/beamdrop
+// Licensed under GNU GPL-3.0-or-later. See LICENSE and NOTICE for details.
+
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('beamdrop', {
@@ -8,11 +11,15 @@ contextBridge.exposeInMainWorld('beamdrop', {
   selectInterface: (address) => ipcRenderer.invoke('app:select-interface', address),
   regeneratePin: () => ipcRenderer.invoke('app:regenerate-pin'),
   setRequireApproval: (enabled) => ipcRenderer.invoke('app:set-approval', enabled),
+  updateSettings: (patch) => ipcRenderer.invoke('app:update-settings', patch),
   approveChallenge: (challengeId, allow, trust = false) => ipcRenderer.invoke('app:approve-challenge', { challengeId, allow, trust }),
   revokeSessions: () => ipcRenderer.invoke('app:revoke-sessions'),
   revokeSession: (sessionId) => ipcRenderer.invoke('app:revoke-session', sessionId),
   revokeTrusted: (id) => ipcRenderer.invoke('app:revoke-trusted', id),
   refreshNetwork: () => ipcRenderer.invoke('app:refresh-network'),
+  fixFirewall: () => ipcRenderer.invoke('app:fix-firewall'),
+  openHotspot: () => ipcRenderer.invoke('app:open-hotspot'),
+  getDiagnostics: () => ipcRenderer.invoke('app:get-diagnostics'),
   pickFiles: () => ipcRenderer.invoke('app:pick-files'),
   pickFolder: () => ipcRenderer.invoke('app:pick-folder'),
   pickSaveDir: () => ipcRenderer.invoke('app:pick-save-dir'),

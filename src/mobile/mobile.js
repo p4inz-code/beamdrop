@@ -9,6 +9,7 @@ let reconnectTimer = null;
 let reconnectDelay = 1000;
 let isLoggedIn = false;
 let filesCache = [];
+let ffmpegAvailable = false;
 let visibleLimit = PAGE_SIZE;
 let activeFilter = 'all';
 let searchQuery = '';
@@ -148,10 +149,15 @@ function logout() {
 
 async function loadInitialData() {
   try {
-    const [filesRes, clipRes] = await Promise.all([
+    const [healthRes, filesRes, clipRes] = await Promise.all([
+      fetch('/api/health').catch(() => null),
       apiFetch('/api/files'),
       apiFetch('/api/clipboard')
     ]);
+    if (healthRes && healthRes.ok) {
+      const h = await healthRes.json();
+      ffmpegAvailable = Boolean(h.ffmpegAvailable);
+    }
     const filesData = await filesRes.json();
     const clipData = await clipRes.json();
     renderFiles(filesData.files || []);
@@ -381,11 +387,28 @@ function renderFiles(files) {
     actions.className = 'row-actions';
 
     if (!file.isDirectory && file.mimeType.startsWith('video/')) {
-      const playBtn = document.createElement('button');
-      playBtn.className = 'btn btn-primary btn-sm';
-      playBtn.textContent = 'Stream Video';
-      playBtn.addEventListener('click', () => openVideoModal(file));
-      actions.appendChild(playBtn);
+      const isNonNative = /\.(mkv|avi|flv|ts)$/i.test(file.name);
+      if (isNonNative && ffmpegAvailable) {
+        const remuxBtn = document.createElement('button');
+        remuxBtn.className = 'btn btn-primary btn-sm';
+        remuxBtn.textContent = 'Stream (Remux)';
+        remuxBtn.addEventListener('click', () => openVideoModal(file, true));
+        actions.appendChild(remuxBtn);
+      } else {
+        const playBtn = document.createElement('button');
+        playBtn.className = 'btn btn-primary btn-sm';
+        playBtn.textContent = 'Stream Video';
+        playBtn.addEventListener('click', () => openVideoModal(file, false));
+        actions.appendChild(playBtn);
+      }
+
+      if (isNonNative) {
+        const vlcLink = document.createElement('a');
+        vlcLink.className = 'btn btn-sm';
+        vlcLink.href = `vlc://${location.origin}/api/files/${encodeURIComponent(file.id)}/stream?token=${encodeURIComponent(authToken)}`;
+        vlcLink.textContent = 'Open in VLC';
+        actions.appendChild(vlcLink);
+      }
     } else if (!file.isDirectory && file.mimeType.startsWith('image/')) {
       const previewBtn = document.createElement('button');
       previewBtn.className = 'btn btn-primary btn-sm';
@@ -428,6 +451,11 @@ function updateBatchBar() {
   }
 }
 
+$('btn-select-all').addEventListener('click', () => {
+  for (const f of filesCache) selectedIds.add(f.id);
+  renderFiles(filesCache);
+});
+
 $('btn-clear-sel').addEventListener('click', () => {
   selectedIds.clear();
   renderFiles(filesCache);
@@ -440,9 +468,10 @@ $('btn-download-zip').addEventListener('click', () => {
 });
 
 // Video & Image Modals
-function openVideoModal(file) {
+function openVideoModal(file, useRemux = false) {
   $('video-title').textContent = file.name;
-  $('video-player').src = `/api/files/${encodeURIComponent(file.id)}/stream?token=${encodeURIComponent(authToken)}`;
+  const ep = useRemux ? 'remux' : 'stream';
+  $('video-player').src = `/api/files/${encodeURIComponent(file.id)}/${ep}?token=${encodeURIComponent(authToken)}`;
   $('video-modal').classList.remove('hidden');
 }
 
@@ -587,6 +616,9 @@ function renderUploads() {
   const badge = $('uploads-badge');
   const items = Array.from(activeUploads.values());
   const activeCount = items.filter((u) => u.percent < 100 && !u.cancelled).length;
+  const totalBytes = items.reduce((acc, u) => acc + u.file.size, 0);
+  const avgPct = items.length ? Math.round(items.reduce((acc, u) => acc + u.percent, 0) / items.length) : 0;
+  $('queue-summary').textContent = items.length > 0 ? `${activeCount} active · ${avgPct}% · ${formatBytes(totalBytes)}` : '';
 
   if (activeCount > 0) {
     badge.textContent = String(activeCount);

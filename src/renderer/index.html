@@ -16,9 +16,12 @@
           <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         <span class="titlebar-name">BeamDrop</span>
-        <span class="status-badge"><span class="status-dot"></span>LAN Ready</span>
+        <span class="status-badge" id="lan-status-badge"><span class="status-dot" id="lan-status-dot"></span><span id="lan-status-text">LAN Ready</span></span>
       </div>
       <div class="window-controls">
+        <button id="btn-open-settings" class="win-btn" title="Settings" aria-label="Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
         <button id="win-min" class="win-btn" title="Minimize" aria-label="Minimize">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14"/></svg>
         </button>
@@ -35,13 +38,14 @@
       <!-- Left Sidebar -->
       <aside class="sidebar">
         <div class="card qr-card">
-          <img id="qr-img" alt="Pairing QR Code" />
+          <img id="qr-img" class="qr-clickable" title="Click to expand QR Code" alt="Pairing QR Code" />
           <div class="url-row">
             <div class="url-pill" id="server-url">http://...</div>
             <button id="btn-copy-url" class="btn-icon" title="Copy URL">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
             </button>
           </div>
+          <div id="mdns-pill" class="mdns-pill hidden"></div>
           <button id="btn-copy-invite" class="btn btn-sm btn-full-w">Copy Instant Connect Link</button>
           <div class="pin-row">
             <span class="pin-label">PIN</span>
@@ -73,6 +77,11 @@
               <button id="btn-change-save" class="btn btn-sm">Change</button>
               <button id="btn-open-save" class="btn btn-sm">Open Folder</button>
             </div>
+          </div>
+
+          <div class="net-tools">
+            <button id="btn-fix-fw" class="btn btn-sm" title="Add Windows Firewall allow rule">Allow Firewall</button>
+            <button id="btn-open-hotspot" class="btn btn-sm" title="Open Windows Mobile Hotspot">Hotspot</button>
           </div>
         </div>
 
@@ -142,6 +151,54 @@
           <div id="clip-list" class="item-list"></div>
         </section>
       </main>
+    </div>
+  </div>
+
+  <!-- Fullscreen QR Modal -->
+  <div id="qr-modal" class="modal hidden">
+    <div class="modal-card qr-modal-card">
+      <div class="modal-header">
+        <strong>Scan to Connect</strong>
+        <button id="btn-close-qr" class="btn btn-sm">Close (Esc)</button>
+      </div>
+      <img id="qr-large-img" alt="Fullscreen QR Code" />
+      <div id="qr-large-url" class="url-pill"></div>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <strong>BeamDrop Settings</strong>
+        <button id="btn-close-settings" class="btn btn-sm">Close (Esc)</button>
+      </div>
+      <div class="settings-grid">
+        <label class="setting-row">
+          <span>Server Port</span>
+          <input id="set-port" type="number" min="1024" max="65535" class="num-input" />
+        </label>
+        <label class="setting-row">
+          <span>mDNS Discovery (beamdrop.local)</span>
+          <input id="set-mdns" type="checkbox" class="switch" />
+        </label>
+        <label class="setting-row">
+          <span>Local HTTPS Mode (PWA &amp; Clipboard)</span>
+          <input id="set-https" type="checkbox" class="switch" />
+        </label>
+        <label class="setting-row">
+          <span>Launch at Login</span>
+          <input id="set-login" type="checkbox" class="switch" />
+        </label>
+        <label class="setting-row">
+          <span>FFmpeg Zero-Reencode Remux (MKV)</span>
+          <input id="set-remux" type="checkbox" class="switch" />
+        </label>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-copy-diag" class="btn btn-sm">Copy Diagnostics</button>
+        <button id="btn-save-settings" class="btn btn-primary btn-sm">Save &amp; Apply</button>
+      </div>
     </div>
   </div>
 

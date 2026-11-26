@@ -15,7 +15,7 @@ You have a 1.5 GB video on your PC and want it on your phone right now—without
 
 **BeamDrop** turns your PC into a hardened local transfer hub over your Wi-Fi or Windows Mobile Hotspot. Scan a QR code with your phone camera, tap **Allow** on your PC, and stream or download original-quality 2GB+ videos at full LAN speed. No account, no cloud, no telemetry.
 
-> **Status: v1.2.0, audited (30/30) and ready for daily 1GB–2GB+ video transfers on Windows (cross-platform CI builds for macOS & Linux).**
+> **Status: v1.3.0, audited (30/30) and ready for daily 1GB–2GB+ video transfers on Windows (cross-platform CI builds for macOS & Linux).**
 > See [Audit Report](AUDIT_REPORT.md), [Known Issues](docs/KNOWN_ISSUES.md), and the [Roadmap](ROADMAP.md).
 
 ---

@@ -2,6 +2,25 @@
 
 All notable changes to **BeamDrop** are documented in this file.
 
+## [1.3.0] - 2026-11-27
+
+### Added
+- **Branded App Icon (`build/icon.png`)**: Custom 512×512 lightning icon bundled across Windows, macOS, Linux, and System Tray.
+- **Persistent Settings Store (`src/settings.js`)**: Saves custom port, Save Folder, mDNS, local HTTPS, Launch at Login, and FFmpeg remux preferences in `userData/settings.json`.
+- **Rotating Diagnostics Logger (`src/logger.js`)**: 5 MB rotating log (`userData/logs/beamdrop.log`) with 1-click **Copy Diagnostics** in Settings (zero PII/filenames).
+- **Zero-Friction Discovery & Network Tools**:
+  - **mDNS (`beamdrop.local`)** via `bonjour-service`
+  - **Optional Dual HTTP + Local HTTPS** (`selfsigned` SAN cert)
+  - **Auto-Adapter Watcher** (5s diff check), **LAN Reachability Self-Probe**, & **VPN Detector**
+  - **1-Click Windows Firewall Helper** (`Allow Firewall`) & **Mobile Hotspot Shortcut** (`Hotspot`)
+- **Pro Media & Integrity**:
+  - **`Open in VLC`** deep link for `.mkv`/`.avi`/`.flv` files on mobile
+  - **Optional Zero-Reencode FFmpeg Remux (`/api/files/:id/remux`)**: Streams MKV/AVI as fragmented MP4 (`-c:v copy -c:a aac`)
+  - **End-to-End SHA-256 Upload Verification**: Optional `sha256` check on `/api/upload/complete/:id` (`422` on mismatch)
+  - **Windows Long Path (`\\?\`)** support in directory `.zip` streaming
+- **Power-User UX**: PC **Settings Modal**, **Fullscreen QR Modal**, keyboard shortcuts (`Ctrl+O`, `Ctrl+Shift+O`, `Ctrl+F`, `Esc`), Mobile **Select All** & queue summary.
+- **Plain `.zip` Windows Release & Multi-OS CI**: Added `zip` target (`BeamDrop-1.3.0-win.zip`), `SHA256SUMS` generation, and multi-OS CI matrix (`ubuntu-latest`, `windows-latest`, `macos-latest`).
+
 ## [1.2.0] - 2026-11-26
 
 ### Added

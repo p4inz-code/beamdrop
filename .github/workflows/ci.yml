@@ -8,7 +8,10 @@ on:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,6 +25,8 @@ jobs:
           node --check src/server.js
           node --check src/network.js
           node --check src/security.js
+          node --check src/settings.js
+          node --check src/logger.js
           node --check src/cli.js
           node --check src/renderer/app.js
           node --check src/mobile/mobile.js

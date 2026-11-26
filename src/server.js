@@ -2,10 +2,12 @@
 // Licensed under GNU GPL-3.0-or-later. See LICENSE and NOTICE for details.
 
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const fsp = require('fs/promises');
 const path = require('path');
 const crypto = require('crypto');
+const { spawn, execFile } = require('child_process');
 const { EventEmitter } = require('events');
 const { WebSocketServer } = require('ws');
 const archiver = require('archiver');
@@ -103,6 +105,31 @@ function sendJson(res, statusCode, data, extraHeaders = {}) {
   res.end(body);
 }
 
+function toLongPath(p) {
+  if (process.platform === 'win32' && p.length >= 240 && !p.startsWith('\\\\?\\')) {
+    return `\\\\?\\${path.resolve(p)}`;
+  }
+  return p;
+}
+
+function checkFfmpegAvailable() {
+  return new Promise((resolve) => {
+    execFile('ffmpeg', ['-version'], { timeout: 2000 }, (err) => {
+      resolve(!err);
+    });
+  });
+}
+
+function computeFileSha256(filePath) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha256');
+    const s = fs.createReadStream(toLongPath(filePath), { highWaterMark: 512 * 1024 });
+    s.on('data', (d) => hash.update(d));
+    s.on('end', () => resolve(hash.digest('hex')));
+    s.on('error', reject);
+  });
+}
+
 class BeamDropServer extends EventEmitter {
   constructor(options = {}) {
     super();
@@ -111,6 +138,10 @@ class BeamDropServer extends EventEmitter {
     this.saveDir = options.saveDir;
     this.mobileDir = options.mobileDir || path.join(__dirname, 'mobile');
     this.trustedStorePath = options.trustedStorePath || null;
+    this.tlsOptions = options.tlsOptions || null;
+    this.logger = options.logger || null;
+    this.ffmpegRemux = Boolean(options.ffmpegRemux);
+    this.ffmpegAvailable = false;
     this.maxFileSize = options.maxFileSize ?? 10 * 1024 * 1024 * 1024; // 10 GB
     this.requireApproval = options.requireApproval ?? true;
 
@@ -139,6 +170,8 @@ class BeamDropServer extends EventEmitter {
     await fsp.mkdir(this.saveDir, { recursive: true });
     await fsp.mkdir(this.getTempDir(), { recursive: true });
     await this.loadTrustedDevices();
+    this.ffmpegAvailable = await checkFfmpegAvailable();
+    this.logger?.info('Server', `Initialized (ffmpeg=${this.ffmpegAvailable})`);
     // Clean up orphaned .part files from any previous unclean shutdown
     try {
       const entries = await fsp.readdir(this.getTempDir());
@@ -468,7 +501,7 @@ class BeamDropServer extends EventEmitter {
     res.setHeader('Referrer-Policy', 'no-referrer');
 
     if (req.method === 'GET' && pathname === '/api/health') {
-      return sendJson(res, 200, { ok: true });
+      return sendJson(res, 200, { ok: true, ffmpegAvailable: this.ffmpegAvailable });
     }
 
     if (req.method !== 'GET' && req.method !== 'HEAD' && !this.validateSameOrigin(req)) {
@@ -523,9 +556,12 @@ class BeamDropServer extends EventEmitter {
         return sendJson(res, 200, { files: this.getPublicFileList() });
       }
 
-      const fileMatch = pathname.match(/^\/api\/files\/([a-zA-Z0-9-]+)\/(stream|download)$/);
+      const fileMatch = pathname.match(/^\/api\/files\/([a-zA-Z0-9-]+)\/(stream|download|remux)$/);
       if (req.method === 'GET' && fileMatch) {
         const [, id, mode] = fileMatch;
+        if (mode === 'remux') {
+          return await this.handleFileRemux(req, res, id);
+        }
         return await this.handleFileTransfer(req, res, id, mode, session);
       }
 
@@ -559,7 +595,7 @@ class BeamDropServer extends EventEmitter {
 
       const completeMatch = pathname.match(/^\/api\/upload\/complete\/([a-zA-Z0-9-]+)$/);
       if (req.method === 'POST' && completeMatch) {
-        return await this.handleUploadComplete(res, completeMatch[1]);
+        return await this.handleUploadComplete(req, res, completeMatch[1]);
       }
 
       const cancelMatch = pathname.match(/^\/api\/upload\/([a-zA-Z0-9-]+)$/);
@@ -826,6 +862,37 @@ class BeamDropServer extends EventEmitter {
     });
   }
 
+  async handleFileRemux(req, res, id) {
+    const item = this.sharedItems.get(id);
+    if (!item || item.isDirectory) return sendJson(res, 404, { error: 'File not found' });
+    if (!this.ffmpegAvailable) {
+      return sendJson(res, 501, { error: 'FFmpeg not available on PC PATH' });
+    }
+
+    res.writeHead(200, {
+      'Content-Type': 'video/mp4',
+      'Cache-Control': 'no-store'
+    });
+
+    const ff = spawn('ffmpeg', [
+      '-v', 'error',
+      '-i', item.filePath,
+      '-c:v', 'copy',
+      '-c:a', 'aac',
+      '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
+      '-f', 'mp4',
+      'pipe:1'
+    ], { stdio: ['ignore', 'pipe', 'pipe'] });
+
+    ff.stdout.pipe(res);
+    ff.on('error', () => {
+      if (!res.writableEnded) res.end();
+    });
+    res.on('close', () => {
+      if (!ff.killed) ff.kill('SIGKILL');
+    });
+  }
+
   async handleBatchZip(req, res, ids) {
     const items = ids.map((id) => this.sharedItems.get(id)).filter(Boolean);
     if (items.length === 0) {
@@ -837,20 +904,20 @@ class BeamDropServer extends EventEmitter {
   async appendDirectorySafe(archive, dirPath, zipPrefix) {
     let entries;
     try {
-      entries = await fsp.readdir(dirPath, { withFileTypes: true });
+      entries = await fsp.readdir(toLongPath(dirPath), { withFileTypes: true });
     } catch {
       return;
     }
     for (const entry of entries) {
       const full = path.join(dirPath, entry.name);
       try {
-        const lst = await fsp.lstat(full);
+        const lst = await fsp.lstat(toLongPath(full));
         if (lst.isSymbolicLink()) continue; // skip symlinks/junctions
         const entryZipPath = path.posix.join(zipPrefix, sanitizeFilename(entry.name));
         if (lst.isDirectory()) {
           await this.appendDirectorySafe(archive, full, entryZipPath);
         } else if (lst.isFile()) {
-          archive.file(full, { name: entryZipPath });
+          archive.file(toLongPath(full), { name: entryZipPath });
         }
       } catch {
         // skip unreadable entries
@@ -1038,9 +1105,19 @@ class BeamDropServer extends EventEmitter {
     });
   }
 
-  async handleUploadComplete(res, uploadId) {
+  async handleUploadComplete(req, res, uploadId) {
     const upload = this.uploads.get(uploadId);
     if (!upload) return sendJson(res, 404, { error: 'Upload session not found' });
+
+    let expectedSha256 = '';
+    try {
+      const body = await readJsonBody(req, 4096);
+      if (typeof body.sha256 === 'string') {
+        expectedSha256 = body.sha256.trim().toLowerCase();
+      }
+    } catch {
+      // empty body allowed
+    }
 
     await upload.writing;
 
@@ -1051,12 +1128,26 @@ class BeamDropServer extends EventEmitter {
     }
 
     await upload.fh.close();
+
+    let sha256Verified = false;
+    if (expectedSha256) {
+      const actualSha256 = await computeFileSha256(upload.tempPath);
+      if (!timingSafeEqualStr(actualSha256, expectedSha256)) {
+        this.uploads.delete(uploadId);
+        await fsp.rm(upload.tempPath, { force: true }).catch(() => {});
+        this.logger?.warn('Upload', `SHA-256 mismatch for ${uploadId}`);
+        return sendJson(res, 422, { error: 'SHA-256 checksum mismatch; file discarded' });
+      }
+      sha256Verified = true;
+    }
+
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         await fsp.rename(upload.tempPath, upload.finalPath);
         break;
       } catch (err) {
         if ((err.code === 'EBUSY' || err.code === 'EPERM') && attempt < 2) {
+          this.logger?.warn('Upload', `Rename retry (${attempt + 1}) due to ${err.code}`);
           await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
         } else {
           throw err;
@@ -1080,7 +1171,7 @@ class BeamDropServer extends EventEmitter {
     this.broadcast('transfer:progress', summary);
     this.emit('transfer:update', summary);
 
-    return sendJson(res, 200, { completed: true, file: added[0] || null });
+    return sendJson(res, 200, { completed: true, sha256Verified, file: added[0] || null });
   }
 
   async handleUploadCancel(res, uploadId) {
@@ -1129,9 +1220,9 @@ class BeamDropServer extends EventEmitter {
   async start() {
     await this.init();
 
-    this.httpServer = http.createServer((req, res) => {
-      this.handleRequest(req, res);
-    });
+    this.httpServer = this.tlsOptions
+      ? https.createServer(this.tlsOptions, (req, res) => this.handleRequest(req, res))
+      : http.createServer((req, res) => this.handleRequest(req, res));
     this.httpServer.requestTimeout = 0;
     this.httpServer.keepAliveTimeout = 65_000;
     this.httpServer.headersTimeout = 66_000;

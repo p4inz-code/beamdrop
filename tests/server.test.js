@@ -9,6 +9,9 @@ const WebSocket = require('ws');
 
 const { BeamDropServer } = require('../src/server');
 const { sanitizeFilename, resolveSafePath, isSafeHttpUrl, PinRateLimiter } = require('../src/security');
+const { SettingsStore } = require('../src/settings');
+const { DiagnosticsLogger } = require('../src/logger');
+const { probeLanReachability, getOrCreateLocalCert } = require('../src/network');
 
 test('Security: isSafeHttpUrl allows http/https and blocks javascript/data/file URLs', () => {
   assert.equal(isSafeHttpUrl('https://github.com/p4inz-code/beamdrop'), true);
@@ -403,4 +406,96 @@ test('Resilience: Server falls back cleanly on EADDRINUSE port conflict', async 
   await s2.stop();
   await s1.stop();
   await fsp.rm(tmpRoot, { recursive: true, force: true });
+});
+
+test('v1.3.0: SettingsStore, DiagnosticsLogger, HTTPS TLS, and Upload SHA-256 verification', async (t) => {
+  const tmpRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'beamdrop-v13-'));
+  t.after(async () => {
+    await fsp.rm(tmpRoot, { recursive: true, force: true });
+  });
+
+  // 1. SettingsStore sanitization & persistence
+  const store = new SettingsStore(path.join(tmpRoot, 'settings.json'));
+  await store.load();
+  const updated = await store.update({ port: 99999, maxConcurrentTransfers: 3, useHttps: true });
+  assert.equal(updated.port, 5050); // clamped invalid port
+  assert.equal(updated.maxConcurrentTransfers, 3);
+  assert.equal(updated.useHttps, true);
+
+  // 2. DiagnosticsLogger
+  const logger = new DiagnosticsLogger(path.join(tmpRoot, 'logs'));
+  await logger.init();
+  await logger.info('Test', 'Diagnostics check');
+  const report = await logger.getDiagnosticsReport({ version: '1.3.0', port: 5050, useHttps: true });
+  assert.ok(report.includes('BeamDrop Diagnostics (v1.3.0)'));
+  assert.ok(report.includes('Diagnostics check'));
+
+  // 3. Local HTTPS cert + BeamDropServer TLS + probeLanReachability
+  const tlsOptions = await getOrCreateLocalCert(path.join(tmpRoot, 'certs'), ['127.0.0.1']);
+  assert.ok(tlsOptions.key && tlsOptions.cert);
+
+  const tlsServer = new BeamDropServer({
+    port: 0,
+    host: '127.0.0.1',
+    saveDir: path.join(tmpRoot, 'save'),
+    tlsOptions,
+    pin: '1234',
+    requireApproval: false
+  });
+  const tlsPort = await tlsServer.start();
+  t.after(() => tlsServer.stop());
+
+  const reachable = await probeLanReachability('127.0.0.1', tlsPort, true);
+  assert.equal(reachable, true);
+
+  // 4. End-to-end SHA-256 verification (valid + mismatch 422)
+  const httpServer = new BeamDropServer({
+    port: 0,
+    host: '127.0.0.1',
+    saveDir: path.join(tmpRoot, 'save2'),
+    pin: '4321',
+    requireApproval: false
+  });
+  const httpPort = await httpServer.start();
+  t.after(() => httpServer.stop());
+  const base = `http://127.0.0.1:${httpPort}`;
+
+  const pair = await (await fetch(`${base}/api/auth/pair`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pin: '4321' })
+  })).json();
+  const headers = { Authorization: `Bearer ${pair.token}` };
+
+  const buf = crypto.randomBytes(128 * 1024);
+  const sha = crypto.createHash('sha256').update(buf).digest('hex');
+
+  // Mismatch -> 422
+  const badInit = await (await fetch(`${base}/api/upload/init`, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename: 'bad_sha.bin', totalSize: buf.length })
+  })).json();
+  await fetch(`${base}/api/upload/chunk/${badInit.uploadId}/0`, { method: 'PUT', headers, body: buf });
+  const badComp = await fetch(`${base}/api/upload/complete/${badInit.uploadId}`, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sha256: '0'.repeat(64) })
+  });
+  assert.equal(badComp.status, 422);
+
+  // Valid -> 200 sha256Verified: true
+  const okInit = await (await fetch(`${base}/api/upload/init`, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename: 'ok_sha.bin', totalSize: buf.length })
+  })).json();
+  await fetch(`${base}/api/upload/chunk/${okInit.uploadId}/0`, { method: 'PUT', headers, body: buf });
+  const okComp = await (await fetch(`${base}/api/upload/complete/${okInit.uploadId}`, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sha256: sha })
+  })).json();
+  assert.equal(okComp.completed, true);
+  assert.equal(okComp.sha256Verified, true);
 });
