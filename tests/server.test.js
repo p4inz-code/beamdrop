@@ -8,7 +8,15 @@ const crypto = require('node:crypto');
 const WebSocket = require('ws');
 
 const { BeamDropServer } = require('../src/server');
-const { sanitizeFilename, resolveSafePath, PinRateLimiter } = require('../src/security');
+const { sanitizeFilename, resolveSafePath, isSafeHttpUrl, PinRateLimiter } = require('../src/security');
+
+test('Security: isSafeHttpUrl allows http/https and blocks javascript/data/file URLs', () => {
+  assert.equal(isSafeHttpUrl('https://github.com/p4inz-code/beamdrop'), true);
+  assert.equal(isSafeHttpUrl('http://192.168.1.10:5050'), true);
+  assert.equal(isSafeHttpUrl('javascript:alert(1)'), false);
+  assert.equal(isSafeHttpUrl('data:text/html,<script>alert(1)</script>'), false);
+  assert.equal(isSafeHttpUrl('file:///C:/Windows/System32'), false);
+});
 
 test('Security: sanitizeFilename blocks traversal, null bytes, and Windows reserved names', () => {
   assert.equal(sanitizeFilename('../../etc/passwd'), 'passwd');
@@ -325,7 +333,58 @@ test('Integration: Auth, PIN rate limit, Approval, Chunked Upload SHA-256, 206 R
   const parSavedHash = crypto.createHash('sha256').update(await fsp.readFile(path.join(saveDir, 'parallel.mp4'))).digest('hex');
   assert.equal(parSavedHash, parHash);
 
-  // 14. Session revocation
+  // 14. 0-byte empty file upload support
+  const zeroInit = await (await fetch(`${baseUrl}/api/upload/init`, {
+    method: 'POST',
+    headers: { ...authHeaders, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename: 'empty.txt', totalSize: 0 })
+  })).json();
+  assert.equal(zeroInit.totalChunks, 0);
+  const zeroComp = await (await fetch(`${baseUrl}/api/upload/complete/${zeroInit.uploadId}`, {
+    method: 'POST',
+    headers: authHeaders
+  })).json();
+  assert.equal(zeroComp.completed, true);
+  assert.equal((await fsp.stat(path.join(saveDir, 'empty.txt'))).size, 0);
+
+  // 15. Trusted Device flow + stale challenge rejection on PIN regen + clearSharedItems
+  const staleRes = await (await fetch(`${baseUrl}/api/auth/pair`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pin: server.pin, deviceName: 'StalePhone' })
+  })).json();
+  server.regeneratePin();
+  const staleStatus = await (await fetch(`${baseUrl}/api/auth/status?challengeId=${staleRes.challengeId}`)).json();
+  assert.equal(staleStatus.status, 'rejected');
+
+  const trustPair = await (await fetch(`${baseUrl}/api/auth/pair`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pin: server.pin, deviceName: 'TrustedPixel' })
+  })).json();
+  assert.equal(server.approveChallenge(trustPair.challengeId, true, true), true);
+  const trustStatus = await (await fetch(`${baseUrl}/api/auth/status?challengeId=${trustPair.challengeId}`)).json();
+  assert.ok(trustStatus.trustKey);
+
+  // Reconnect using trustKey (no PIN, no approval prompt)
+  const autoTrust = await fetch(`${baseUrl}/api/auth/pair`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ trustKey: trustStatus.trustKey, deviceName: 'TrustedPixel' })
+  });
+  assert.equal(autoTrust.status, 200);
+  const autoTrustData = await autoTrust.json();
+  assert.equal(autoTrustData.trusted, true);
+
+  const trustedList = server.getTrustedDevices();
+  assert.equal(trustedList.length, 1);
+  assert.equal(await server.revokeTrustedDevice(trustedList[0].id), true);
+  assert.equal(server.getTrustedDevices().length, 0);
+
+  server.clearSharedItems();
+  assert.equal(server.getPublicFileList().length, 0);
+
+  // 16. Session revocation
   server.revokeAllSessions();
   const afterRevoke = await fetch(`${baseUrl}/api/files`, { headers: authHeaders });
   assert.equal(afterRevoke.status, 401);

@@ -77,8 +77,27 @@ function timingSafeEqualStr(a, b) {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
+function monotonicNowMs() {
+  return Number(process.hrtime.bigint() / 1_000_000n);
+}
+
 /**
- * Per-IP rate limiter for PIN authentication attempts.
+ * Validate whether a string is a safe http/https URL (blocks javascript:, data:, file:).
+ */
+function isSafeHttpUrl(raw) {
+  if (typeof raw !== 'string') return false;
+  const trimmed = raw.trim();
+  if (!/^https?:\/\//i.test(trimmed)) return false;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Per-IP rate limiter for PIN authentication attempts (monotonic clock).
  */
 class PinRateLimiter {
   constructor({ maxAttempts = 5, windowMs = 60_000, lockoutMs = 120_000 } = {}) {
@@ -91,7 +110,7 @@ class PinRateLimiter {
   isLocked(ip) {
     const rec = this.records.get(ip);
     if (!rec) return { locked: false, retryAfterSec: 0 };
-    const now = Date.now();
+    const now = monotonicNowMs();
     if (rec.lockedUntil && now < rec.lockedUntil) {
       return {
         locked: true,
@@ -105,7 +124,7 @@ class PinRateLimiter {
   }
 
   recordFailure(ip) {
-    const now = Date.now();
+    const now = monotonicNowMs();
     let rec = this.records.get(ip);
     if (!rec || now - rec.firstAttempt > this.windowMs) {
       rec = { count: 1, firstAttempt: now, lockedUntil: 0 };
@@ -135,5 +154,6 @@ module.exports = {
   generatePin,
   generateToken,
   timingSafeEqualStr,
+  isSafeHttpUrl,
   PinRateLimiter
 };

@@ -110,6 +110,7 @@ class BeamDropServer extends EventEmitter {
     this.host = options.host ?? '0.0.0.0';
     this.saveDir = options.saveDir;
     this.mobileDir = options.mobileDir || path.join(__dirname, 'mobile');
+    this.trustedStorePath = options.trustedStorePath || null;
     this.maxFileSize = options.maxFileSize ?? 10 * 1024 * 1024 * 1024; // 10 GB
     this.requireApproval = options.requireApproval ?? true;
 
@@ -123,6 +124,7 @@ class BeamDropServer extends EventEmitter {
 
     this.sessions = new Map();
     this.challenges = new Map();
+    this.trustedDevices = new Map(); // id -> { id, deviceName, trustKey, createdAt }
     this.sharedItems = new Map();
     this.uploads = new Map();
     this.clipboard = [];
@@ -136,6 +138,7 @@ class BeamDropServer extends EventEmitter {
   async init() {
     await fsp.mkdir(this.saveDir, { recursive: true });
     await fsp.mkdir(this.getTempDir(), { recursive: true });
+    await this.loadTrustedDevices();
     // Clean up orphaned .part files from any previous unclean shutdown
     try {
       const entries = await fsp.readdir(this.getTempDir());
@@ -159,9 +162,55 @@ class BeamDropServer extends EventEmitter {
     this.emit('state:changed');
   }
 
+  async loadTrustedDevices() {
+    if (!this.trustedStorePath) return;
+    try {
+      const raw = await fsp.readFile(this.trustedStorePath, 'utf8');
+      const list = JSON.parse(raw);
+      if (Array.isArray(list)) {
+        for (const d of list) {
+          if (d && d.id && d.trustKey) this.trustedDevices.set(d.id, d);
+        }
+      }
+    } catch {
+      // ignore if file does not exist yet
+    }
+  }
+
+  async saveTrustedDevices() {
+    if (!this.trustedStorePath) return;
+    try {
+      await fsp.mkdir(path.dirname(this.trustedStorePath), { recursive: true });
+      const data = JSON.stringify(Array.from(this.trustedDevices.values()), null, 2);
+      await fsp.writeFile(this.trustedStorePath, data, 'utf8');
+    } catch {
+      // ignore
+    }
+  }
+
+  getTrustedDevices() {
+    return Array.from(this.trustedDevices.values()).map((d) => ({
+      id: d.id,
+      deviceName: d.deviceName,
+      createdAt: d.createdAt
+    }));
+  }
+
+  async revokeTrustedDevice(id) {
+    if (this.trustedDevices.delete(id)) {
+      await this.saveTrustedDevices();
+      this.emit('state:changed');
+      return true;
+    }
+    return false;
+  }
+
   regeneratePin() {
     this.pin = generatePin();
     this.qrSecret = crypto.randomBytes(16).toString('hex');
+    for (const ch of this.challenges.values()) {
+      if (ch.status === 'pending') ch.status = 'rejected';
+    }
     this.emit('state:changed');
     return this.pin;
   }
@@ -206,7 +255,7 @@ class BeamDropServer extends EventEmitter {
     this.emit('sessions:changed', []);
   }
 
-  approveChallenge(challengeId, allow) {
+  approveChallenge(challengeId, allow, trust = false) {
     const ch = this.challenges.get(challengeId);
     if (!ch || ch.status !== 'pending') return false;
 
@@ -215,6 +264,19 @@ class BeamDropServer extends EventEmitter {
       const sessionId = crypto.randomUUID();
       ch.status = 'approved';
       ch.token = token;
+      if (trust) {
+        const trustKey = generateToken();
+        const trustedId = crypto.randomUUID();
+        this.trustedDevices.set(trustedId, {
+          id: trustedId,
+          deviceName: ch.deviceName,
+          trustKey,
+          createdAt: Date.now()
+        });
+        ch.trustKey = trustKey;
+        this.saveTrustedDevices();
+        this.emit('state:changed');
+      }
       this.sessions.set(token, {
         id: sessionId,
         token,
@@ -289,6 +351,12 @@ class BeamDropServer extends EventEmitter {
       return true;
     }
     return false;
+  }
+
+  clearSharedItems() {
+    this.sharedItems.clear();
+    this.broadcast('files:updated', []);
+    this.emit('files:changed', []);
   }
 
   getPublicFileList() {
@@ -434,7 +502,7 @@ class BeamDropServer extends EventEmitter {
           return sendJson(
             res,
             200,
-            { status: 'approved', token: ch.token },
+            { status: 'approved', token: ch.token, trustKey: ch.trustKey || null },
             { 'Set-Cookie': `bd_token=${encodeURIComponent(ch.token)}; HttpOnly; SameSite=Strict; Path=/` }
           );
         }
@@ -544,7 +612,27 @@ class BeamDropServer extends EventEmitter {
     const body = await readJsonBody(req, 4096);
     const submittedPin = String(body.pin || '').trim();
     const submittedQr = String(body.qrSecret || '').trim();
+    const submittedTrust = String(body.trustKey || '').trim();
     const deviceName = String(body.deviceName || 'Mobile Device').replace(/[\x00-\x1f\x7f]/g, '').slice(0, 48) || 'Mobile Device';
+
+    // Check Trusted Device Key first (1-tap reconnect)
+    if (submittedTrust) {
+      for (const td of this.trustedDevices.values()) {
+        if (timingSafeEqualStr(submittedTrust, td.trustKey)) {
+          this.rateLimiter.recordSuccess(remoteIp);
+          const token = generateToken();
+          const sessionId = crypto.randomUUID();
+          this.sessions.set(token, { id: sessionId, token, deviceName: td.deviceName || deviceName, ip: remoteIp, createdAt: Date.now() });
+          this.emit('sessions:changed', this.getActiveSessions());
+          return sendJson(
+            res,
+            200,
+            { status: 'approved', token, trusted: true },
+            { 'Set-Cookie': `bd_token=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/` }
+          );
+        }
+      }
+    }
 
     const qrValid = Boolean(submittedQr) && timingSafeEqualStr(submittedQr, this.qrSecret);
     const pinValid = Boolean(submittedPin) && timingSafeEqualStr(submittedPin, this.pin);
@@ -746,7 +834,31 @@ class BeamDropServer extends EventEmitter {
     return this.streamArchive(req, res, items, `BeamDrop-Batch-${Date.now()}.zip`);
   }
 
-  streamArchive(req, res, items, zipName) {
+  async appendDirectorySafe(archive, dirPath, zipPrefix) {
+    let entries;
+    try {
+      entries = await fsp.readdir(dirPath, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = path.join(dirPath, entry.name);
+      try {
+        const lst = await fsp.lstat(full);
+        if (lst.isSymbolicLink()) continue; // skip symlinks/junctions
+        const entryZipPath = path.posix.join(zipPrefix, sanitizeFilename(entry.name));
+        if (lst.isDirectory()) {
+          await this.appendDirectorySafe(archive, full, entryZipPath);
+        } else if (lst.isFile()) {
+          archive.file(full, { name: entryZipPath });
+        }
+      } catch {
+        // skip unreadable entries
+      }
+    }
+  }
+
+  async streamArchive(req, res, items, zipName) {
     res.writeHead(200, {
       'Content-Type': 'application/zip',
       'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(zipName)}`
@@ -771,11 +883,16 @@ class BeamDropServer extends EventEmitter {
 
     archive.pipe(res);
     for (const item of items) {
-      if (!fs.existsSync(item.filePath)) continue;
-      if (item.isDirectory) {
-        archive.directory(item.filePath, sanitizeFilename(item.name));
-      } else {
-        archive.file(item.filePath, { name: sanitizeFilename(item.name) });
+      try {
+        const lst = await fsp.lstat(item.filePath);
+        if (lst.isSymbolicLink()) continue;
+        if (lst.isDirectory()) {
+          await this.appendDirectorySafe(archive, item.filePath, sanitizeFilename(item.name));
+        } else if (lst.isFile()) {
+          archive.file(item.filePath, { name: sanitizeFilename(item.name) });
+        }
+      } catch {
+        // skip missing items
       }
     }
     archive.finalize();
@@ -798,7 +915,7 @@ class BeamDropServer extends EventEmitter {
     const chunkSize = Math.min(Math.max(requestedChunk, 64 * 1024), 16 * 1024 * 1024);
     const fingerprint = typeof body.fingerprint === 'string' ? body.fingerprint.slice(0, 128) : '';
 
-    if (!Number.isFinite(totalSize) || totalSize <= 0 || totalSize > this.maxFileSize) {
+    if (!Number.isFinite(totalSize) || totalSize < 0 || totalSize > this.maxFileSize) {
       return sendJson(res, 400, { error: `Invalid file size (max ${Math.round(this.maxFileSize / (1024 ** 3))} GB)` });
     }
 
@@ -934,7 +1051,18 @@ class BeamDropServer extends EventEmitter {
     }
 
     await upload.fh.close();
-    await fsp.rename(upload.tempPath, upload.finalPath);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await fsp.rename(upload.tempPath, upload.finalPath);
+        break;
+      } catch (err) {
+        if ((err.code === 'EBUSY' || err.code === 'EPERM') && attempt < 2) {
+          await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
+        } else {
+          throw err;
+        }
+      }
+    }
     this.uploads.delete(uploadId);
 
     const added = await this.addSharedPaths([upload.finalPath], 'phone');
@@ -942,6 +1070,7 @@ class BeamDropServer extends EventEmitter {
       id: upload.id,
       direction: 'upload',
       filename: upload.filename,
+      filePath: upload.finalPath,
       deviceName: upload.deviceName,
       totalSize: upload.totalSize,
       receivedBytes: upload.totalSize,

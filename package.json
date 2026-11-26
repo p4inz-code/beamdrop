@@ -1,12 +1,47 @@
 {
   "name": "beamdrop",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "Zero-cloud, FDM-minimal local Wi-Fi file & 2GB+ video transfer app for PC and mobile.",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
     "server": "node src/cli.js",
-    "test": "node --test tests/server.test.js"
+    "test": "node --test tests/server.test.js",
+    "dist:dir": "electron-builder --dir",
+    "dist:win": "electron-builder --win"
+  },
+  "build": {
+    "appId": "com.p4inzcode.beamdrop",
+    "productName": "BeamDrop",
+    "copyright": "Copyright (C) 2026 Atharva Patil (p4inz-code)",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json",
+      "LICENSE",
+      "NOTICE"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.utilities"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility"
+    }
   },
   "repository": {
     "type": "git",
@@ -32,6 +67,7 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "electron": "^35.0.0"
+    "electron": "^35.0.0",
+    "electron-builder": "^26.18.0"
   }
 }

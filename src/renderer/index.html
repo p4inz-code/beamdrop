@@ -82,6 +82,12 @@
             <button id="btn-revoke" class="btn-link danger">Revoke All</button>
           </div>
           <ul id="sessions-list" class="sessions-list"></ul>
+          <div id="trusted-wrap" class="trusted-wrap hidden">
+            <div class="card-header" style="margin-top:10px;">
+              <span>Trusted (<span id="trusted-count">0</span>)</span>
+            </div>
+            <ul id="trusted-list" class="sessions-list"></ul>
+          </div>
         </div>
       </aside>
 
@@ -116,6 +122,7 @@
               <button class="pill" data-filter="image">Images</button>
               <button class="pill" data-filter="folder">Folders</button>
             </div>
+            <button id="btn-clear-files" class="btn btn-sm danger-btn" title="Clear Shared List">Clear All</button>
           </div>
           <div id="files-list" class="item-list"></div>
         </section>
@@ -126,8 +133,11 @@
 
         <section id="tab-clipboard" class="tab-panel">
           <div class="clip-composer">
-            <textarea id="clip-input" placeholder="Paste text or URL to push to phone..."></textarea>
-            <button id="btn-send-clip" class="btn btn-primary">Send</button>
+            <textarea id="clip-input" placeholder="Paste text or URL to push to phone (Enter to send)..."></textarea>
+            <div class="clip-btns">
+              <button id="btn-send-clip" class="btn btn-primary">Send</button>
+              <button id="btn-paste-send" class="btn btn-sm" title="Send current OS clipboard">Paste &amp; Send</button>
+            </div>
           </div>
           <div id="clip-list" class="item-list"></div>
         </section>

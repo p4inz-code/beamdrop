@@ -2,11 +2,25 @@ const $ = (id) => document.getElementById(id);
 
 const transfers = new Map();
 const pendingChallenges = [];
+const PAGE_SIZE = 50;
 let allFiles = [];
+let visibleLimit = PAGE_SIZE;
 let currentQrUrl = '';
 let activeFilter = 'all';
 let searchQuery = '';
 let toastTimer = null;
+
+function isSafeHttpUrl(raw) {
+  if (typeof raw !== 'string') return false;
+  const trimmed = raw.trim();
+  if (!/^https?:\/\//i.test(trimmed)) return false;
+  try {
+    const u = new URL(trimmed);
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
 
 function createSvgIcon(kind) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -72,6 +86,7 @@ function renderState(state) {
 
   renderFiles(state.files);
   renderSessions(state.sessions);
+  renderTrusted(state.trustedDevices || []);
   renderClipboard(state.clipboard);
 }
 
@@ -99,7 +114,8 @@ function renderFiles(files) {
     return;
   }
 
-  for (const file of filtered) {
+  const slice = filtered.slice(0, visibleLimit);
+  for (const file of slice) {
     const row = document.createElement('div');
     row.className = 'item-row';
 
@@ -129,6 +145,17 @@ function renderFiles(files) {
     row.appendChild(meta);
     row.appendChild(removeBtn);
     list.appendChild(row);
+  }
+
+  if (filtered.length > visibleLimit) {
+    const moreBtn = document.createElement('button');
+    moreBtn.className = 'btn btn-sm';
+    moreBtn.textContent = `Show More (${filtered.length - visibleLimit} remaining)`;
+    moreBtn.addEventListener('click', () => {
+      visibleLimit += PAGE_SIZE;
+      renderFiles(allFiles);
+    });
+    list.appendChild(moreBtn);
   }
 }
 
@@ -188,6 +215,15 @@ function renderTransfers() {
     meta.appendChild(subEl);
     meta.appendChild(bar);
     row.appendChild(meta);
+
+    if (t.status === 'completed' && t.filePath) {
+      const revealBtn = document.createElement('button');
+      revealBtn.className = 'btn btn-sm';
+      revealBtn.textContent = 'Show in Folder';
+      revealBtn.addEventListener('click', () => window.beamdrop.showInFolder(t.filePath));
+      row.appendChild(revealBtn);
+    }
+
     list.appendChild(row);
   }
 }
@@ -225,6 +261,37 @@ function renderSessions(sessions) {
   }
 }
 
+function renderTrusted(trusted) {
+  const wrap = $('trusted-wrap');
+  const list = $('trusted-list');
+  $('trusted-count').textContent = String(trusted.length);
+  list.textContent = '';
+  if (trusted.length === 0) {
+    wrap.classList.add('hidden');
+    return;
+  }
+  wrap.classList.remove('hidden');
+  for (const td of trusted) {
+    const li = document.createElement('li');
+    li.className = 'session-item';
+
+    const label = document.createElement('span');
+    label.textContent = td.deviceName;
+
+    const forgetBtn = document.createElement('button');
+    forgetBtn.className = 'btn-link danger';
+    forgetBtn.textContent = 'Forget';
+    forgetBtn.addEventListener('click', () => {
+      window.beamdrop.revokeTrusted(td.id);
+      showToast(`Forgot ${td.deviceName}`);
+    });
+
+    li.appendChild(label);
+    li.appendChild(forgetBtn);
+    list.appendChild(li);
+  }
+}
+
 function renderClipboard(entries) {
   const list = $('clip-list');
   list.textContent = '';
@@ -246,6 +313,19 @@ function renderClipboard(entries) {
     meta.appendChild(textEl);
     meta.appendChild(subEl);
 
+    const btns = document.createElement('div');
+    btns.className = 'btn-row';
+
+    if (isSafeHttpUrl(entry.text)) {
+      const openLink = document.createElement('a');
+      openLink.className = 'btn btn-sm';
+      openLink.href = entry.text.trim();
+      openLink.target = '_blank';
+      openLink.rel = 'noopener noreferrer';
+      openLink.textContent = 'Open';
+      btns.appendChild(openLink);
+    }
+
     const copyBtn = document.createElement('button');
     copyBtn.className = 'btn btn-sm';
     copyBtn.textContent = 'Copy';
@@ -253,9 +333,10 @@ function renderClipboard(entries) {
       navigator.clipboard.writeText(entry.text);
       showToast('Copied to clipboard');
     });
+    btns.appendChild(copyBtn);
 
     row.appendChild(meta);
-    row.appendChild(copyBtn);
+    row.appendChild(btns);
     list.appendChild(row);
   }
 }
@@ -281,22 +362,33 @@ function renderApprovalBanner() {
   allowBtn.className = 'btn btn-primary btn-sm';
   allowBtn.textContent = 'Allow';
   allowBtn.addEventListener('click', async () => {
-    await window.beamdrop.approveChallenge(ch.id, true);
+    await window.beamdrop.approveChallenge(ch.id, true, false);
     pendingChallenges.shift();
     renderApprovalBanner();
     showToast(`${ch.deviceName} connected`);
+  });
+
+  const trustBtn = document.createElement('button');
+  trustBtn.className = 'btn btn-sm';
+  trustBtn.textContent = 'Allow & Trust';
+  trustBtn.addEventListener('click', async () => {
+    await window.beamdrop.approveChallenge(ch.id, true, true);
+    pendingChallenges.shift();
+    renderApprovalBanner();
+    showToast(`${ch.deviceName} trusted`);
   });
 
   const blockBtn = document.createElement('button');
   blockBtn.className = 'btn btn-sm danger';
   blockBtn.textContent = 'Block';
   blockBtn.addEventListener('click', async () => {
-    await window.beamdrop.approveChallenge(ch.id, false);
+    await window.beamdrop.approveChallenge(ch.id, false, false);
     pendingChallenges.shift();
     renderApprovalBanner();
   });
 
   actions.appendChild(allowBtn);
+  actions.appendChild(trustBtn);
   actions.appendChild(blockBtn);
   banner.appendChild(msg);
   banner.appendChild(actions);
@@ -360,6 +452,15 @@ $('btn-revoke').addEventListener('click', () => {
 });
 $('btn-pick-files').addEventListener('click', () => window.beamdrop.pickFiles());
 $('btn-pick-folder').addEventListener('click', () => window.beamdrop.pickFolder());
+$('btn-clear-files').addEventListener('click', async () => {
+  await window.beamdrop.clearSharedItems();
+  showToast('Shared list cleared');
+});
+$('btn-paste-send').addEventListener('click', async () => {
+  const entry = await window.beamdrop.pasteAndSendClipboard();
+  if (entry) showToast('OS clipboard sent to phone');
+  else showToast('Clipboard is empty');
+});
 const sendClipboardText = async () => {
   const val = $('clip-input').value.trim();
   if (!val) return;
@@ -375,15 +476,22 @@ $('clip-input').addEventListener('keydown', (e) => {
   }
 });
 
-// Drag & Drop
+// Full-window Drag & Drop
 const dropZone = $('drop-zone');
-dropZone.addEventListener('dragover', (e) => {
+document.body.addEventListener('dragover', (e) => {
   e.preventDefault();
+  document.body.classList.add('window-drag');
   dropZone.classList.add('drag-over');
 });
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
-dropZone.addEventListener('drop', async (e) => {
+document.body.addEventListener('dragleave', (e) => {
+  if (e.relatedTarget === null) {
+    document.body.classList.remove('window-drag');
+    dropZone.classList.remove('drag-over');
+  }
+});
+document.body.addEventListener('drop', async (e) => {
   e.preventDefault();
+  document.body.classList.remove('window-drag');
   dropZone.classList.remove('drag-over');
   const paths = [];
   for (const file of e.dataTransfer.files) {

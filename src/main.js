@@ -1,7 +1,7 @@
 // BeamDrop — Copyright (C) 2026 Atharva Patil (p4inz-code) | https://github.com/p4inz-code/beamdrop
 // Licensed under GNU GPL-3.0-or-later. See LICENSE and NOTICE for details.
 
-const { app, BrowserWindow, Tray, Menu, ipcMain, dialog, shell, nativeImage } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, dialog, shell, nativeImage, powerSaveBlocker, clipboard, Notification } = require('electron');
 const path = require('path');
 const os = require('os');
 const { BeamDropServer } = require('./server');
@@ -12,6 +12,8 @@ let tray = null;
 let server = null;
 let selectedAddress = null;
 let isQuitting = false;
+let powerSaveId = null;
+const activeTransferIds = new Set();
 
 function createTrayIcon() {
   // Minimal 16x16 SVG icon rendered to nativeImage so no external icon asset is required
@@ -46,6 +48,7 @@ async function buildAppState() {
     selectedAddress: activeAddr,
     files: server.getPublicFileList(),
     sessions: server.getActiveSessions(),
+    trustedDevices: server.getTrustedDevices(),
     clipboard: server.clipboard
   };
 }
@@ -146,8 +149,29 @@ function registerIpc() {
     return state;
   });
 
-  ipcMain.handle('app:approve-challenge', (_e, { challengeId, allow }) => {
-    return server.approveChallenge(challengeId, allow);
+  ipcMain.handle('app:approve-challenge', (_e, { challengeId, allow, trust }) => {
+    return server.approveChallenge(challengeId, allow, Boolean(trust));
+  });
+
+  ipcMain.handle('app:revoke-trusted', (_e, id) => {
+    return server.revokeTrustedDevice(id);
+  });
+
+  ipcMain.handle('app:clear-shared', () => {
+    server.clearSharedItems();
+    return true;
+  });
+
+  ipcMain.handle('app:show-in-folder', (_e, filePath) => {
+    if (typeof filePath === 'string' && filePath) {
+      shell.showItemInFolder(filePath);
+    }
+  });
+
+  ipcMain.handle('app:paste-send-clipboard', () => {
+    const text = clipboard.readText();
+    if (!text || !text.trim()) return null;
+    return server.addClipboardEntry(text, 'PC');
   });
 
   ipcMain.handle('app:revoke-sessions', () => {
@@ -226,14 +250,36 @@ process.on('unhandledRejection', (err) => {
 
 app.whenReady().then(async () => {
   const defaultSaveDir = path.join(os.homedir(), 'Downloads', 'BeamDrop');
+  const trustedStorePath = path.join(app.getPath('userData'), 'trusted_devices.json');
   server = new BeamDropServer({
     port: Number(process.env.BEAMDROP_PORT || 5050),
     saveDir: defaultSaveDir,
+    trustedStorePath,
     requireApproval: true
   });
 
   server.on('files:changed', (files) => sendToRenderer('event:files', files));
-  server.on('transfer:update', (t) => sendToRenderer('event:transfer', t));
+  server.on('state:changed', async () => sendToRenderer('event:state', await buildAppState()));
+  server.on('transfer:update', (t) => {
+    if (t.status === 'active') {
+      activeTransferIds.add(t.id);
+      if (powerSaveId === null) {
+        powerSaveId = powerSaveBlocker.start('prevent-app-suspension');
+      }
+    } else {
+      activeTransferIds.delete(t.id);
+      if (activeTransferIds.size === 0 && powerSaveId !== null) {
+        powerSaveBlocker.stop(powerSaveId);
+        powerSaveId = null;
+      }
+      if (t.status === 'completed' && t.direction === 'upload' && (t.totalSize || 0) >= 10 * 1024 * 1024) {
+        if (mainWindow && (!mainWindow.isVisible() || !mainWindow.isFocused()) && Notification.isSupported()) {
+          new Notification({ title: 'BeamDrop Transfer Complete', body: `${t.filename} saved to PC.` }).show();
+        }
+      }
+    }
+    sendToRenderer('event:transfer', t);
+  });
   server.on('auth:challenge', (ch) => {
     if (mainWindow && !mainWindow.isVisible()) mainWindow.show();
     sendToRenderer('event:challenge', ch);

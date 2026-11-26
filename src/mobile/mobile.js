@@ -1,18 +1,38 @@
 const $ = (id) => document.getElementById(id);
 
 const CHUNK_SIZE = 8 * 1024 * 1024;
+const PAGE_SIZE = 50;
 let authToken = localStorage.getItem('bd_token') || '';
+let trustKey = localStorage.getItem('bd_trust_key') || '';
 let ws = null;
 let reconnectTimer = null;
 let reconnectDelay = 1000;
 let isLoggedIn = false;
 let filesCache = [];
+let visibleLimit = PAGE_SIZE;
 let activeFilter = 'all';
 let searchQuery = '';
 let wakeLock = null;
 let toastTimer = null;
 const selectedIds = new Set();
 const activeUploads = new Map();
+
+function isSafeHttpUrl(raw) {
+  if (typeof raw !== 'string') return false;
+  const trimmed = raw.trim();
+  if (!/^https?:\/\//i.test(trimmed)) return false;
+  try {
+    const u = new URL(trimmed);
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function isEmbeddedWebView() {
+  const ua = navigator.userAgent || '';
+  return /\b(FBAN|FBAV|Instagram|Snapchat|Line|MicroMessenger|GSA\/|wv)\b/i.test(ua);
+}
 
 function createSvgIcon(kind) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -191,19 +211,23 @@ function connectWebSocket() {
 }
 
 // Pairing
-async function submitPair({ pin = '', qrSecret = '' }) {
+async function submitPair({ pin = '', qrSecret = '', trust = '' }) {
   $('btn-pair').disabled = true;
-  $('auth-status').textContent = qrSecret ? 'Verifying QR code...' : 'Verifying PIN...';
+  $('auth-status').textContent = trust ? 'Reconnecting trusted device...' : qrSecret ? 'Verifying QR code...' : 'Verifying PIN...';
 
   try {
     const res = await fetch('/api/auth/pair', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pin, qrSecret, deviceName: detectDeviceName() })
+      body: JSON.stringify({ pin, qrSecret, trustKey: trust, deviceName: detectDeviceName() })
     });
     const data = await res.json();
     if (!res.ok) {
-      $('auth-status').textContent = data.error || 'Pairing failed';
+      if (trust) {
+        trustKey = '';
+        localStorage.removeItem('bd_trust_key');
+      }
+      $('auth-status').textContent = trust ? 'Enter PIN to reconnect.' : (data.error || 'Pairing failed');
       $('btn-pair').disabled = false;
       return;
     }
@@ -224,6 +248,10 @@ async function submitPair({ pin = '', qrSecret = '' }) {
           clearInterval(poll);
           authToken = stData.token;
           localStorage.setItem('bd_token', authToken);
+          if (stData.trustKey) {
+            trustKey = stData.trustKey;
+            localStorage.setItem('bd_trust_key', trustKey);
+          }
           showApp();
         } else if (stData.status === 'rejected') {
           clearInterval(poll);
@@ -302,7 +330,8 @@ function renderFiles(files) {
     return;
   }
 
-  for (const file of filtered) {
+  const slice = filtered.slice(0, visibleLimit);
+  for (const file of slice) {
     const card = document.createElement('div');
     card.className = 'card-row';
 
@@ -375,6 +404,16 @@ function renderFiles(files) {
     card.appendChild(top);
     card.appendChild(actions);
     list.appendChild(card);
+  }
+  if (filtered.length > visibleLimit) {
+    const moreBtn = document.createElement('button');
+    moreBtn.className = 'btn btn-sm';
+    moreBtn.textContent = `Show More (${filtered.length - visibleLimit} remaining)`;
+    moreBtn.addEventListener('click', () => {
+      visibleLimit += PAGE_SIZE;
+      renderFiles(filesCache);
+    });
+    list.appendChild(moreBtn);
   }
   updateBatchBar();
 }
@@ -637,6 +676,19 @@ function renderClipboard(entries) {
     sub.className = 'row-sub';
     sub.textContent = `From ${entry.from}`;
 
+    const actions = document.createElement('div');
+    actions.className = 'row-actions';
+
+    if (isSafeHttpUrl(entry.text)) {
+      const openLink = document.createElement('a');
+      openLink.className = 'btn btn-primary btn-sm';
+      openLink.href = entry.text.trim();
+      openLink.target = '_blank';
+      openLink.rel = 'noopener noreferrer';
+      openLink.textContent = 'Open Link';
+      actions.appendChild(openLink);
+    }
+
     const copyBtn = document.createElement('button');
     copyBtn.className = 'btn btn-sm';
     copyBtn.textContent = 'Copy';
@@ -644,10 +696,11 @@ function renderClipboard(entries) {
       copyTextFallback(entry.text);
       showToast('Copied to clipboard');
     });
+    actions.appendChild(copyBtn);
 
     card.appendChild(text);
     card.appendChild(sub);
-    card.appendChild(copyBtn);
+    card.appendChild(actions);
     list.appendChild(card);
   }
 }
@@ -683,18 +736,26 @@ document.querySelectorAll('.nav-btn').forEach((btn) => {
 
 $('btn-disconnect').addEventListener('click', logout);
 
+if (isEmbeddedWebView()) {
+  $('webview-banner').classList.remove('hidden');
+}
+$('btn-dismiss-wv').addEventListener('click', () => $('webview-banner').classList.add('hidden'));
+
 const urlParams = new URLSearchParams(location.search);
 const qrSecretParam = urlParams.get('q');
 if (qrSecretParam) {
   history.replaceState({}, '', '/');
 }
 
+const fallbackConnect = () => {
+  if (qrSecretParam) submitPair({ qrSecret: qrSecretParam });
+  else if (trustKey) submitPair({ trust: trustKey });
+};
+
 if (authToken) {
   apiFetch('/api/auth/me')
-    .then((r) => (r.ok ? showApp() : logout()))
-    .catch(() => {
-      if (qrSecretParam) submitPair({ qrSecret: qrSecretParam });
-    });
-} else if (qrSecretParam) {
-  submitPair({ qrSecret: qrSecretParam });
+    .then((r) => (r.ok ? showApp() : fallbackConnect()))
+    .catch(() => fallbackConnect());
+} else {
+  fallbackConnect();
 }

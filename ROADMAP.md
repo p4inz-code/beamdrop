@@ -10,13 +10,14 @@
 
 ---
 
-## v1.2.0 (Planned)
-- [ ] **mDNS (`beamdrop.local`)**: Zero-IP discovery on local Wi-Fi
-- [ ] **Optional Local HTTPS**: Self-signed local cert for native PWA install & `navigator.clipboard`
-- [ ] **Trusted Device Memory**: Optional 1-tap reconnect for previously approved devices
-- [ ] **`powerSaveBlocker`**: Prevent PC sleep during active 2GB+ transfers
-- [ ] **Cross-Platform Installers**: Windows `.exe` (NSIS + Portable), macOS `.dmg`, and Linux `.AppImage` via `electron-builder` + GitHub Actions
-- [ ] **Symlink & Long-Path Guards**: Skip symlinks during ZIP streaming and support Windows `\\?\` paths
+## v1.2.0 (Shipped)
+- [x] **Trusted Device Memory**: 1-tap reconnect via cryptographic `trustKey` + `Forget` management
+- [x] **`powerSaveBlocker`**: Prevent PC sleep during active 2GB+ transfers
+- [x] **Symlink & `EBUSY` Guards**: Skip symlinks (`lstat`) in `.zip` streams + 3x rename retry + 0-byte upload support
+- [x] **Monotonic Rate Limiter**: `process.hrtime.bigint()` clock immunity
+- [x] **UX Polish**: `tabular-nums`, full-window drag & drop, `Clear All`, `Show in Folder`, `Paste & Send`, clickable safe `https?://` clipboard links, In-App WebView detector, and 50-item pagination
+- [x] **Cross-Platform Packaging**: `electron-builder` (Windows `.exe`, macOS `.dmg`, Linux `.AppImage`/`.deb`) + GitHub Actions release workflow
+- [ ] **mDNS (`beamdrop.local`) & Optional Local HTTPS** (moved to `v1.3.0`)
 
 ---
 
