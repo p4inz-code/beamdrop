@@ -1,24 +1,35 @@
 # BeamDrop
 
-**Zero-cloud, FDM-minimal local Wi-Fi file & 2GB+ video transfer app for Windows PC and Mobile (iOS & Android).**
+**Zero-cloud, high-throughput local Wi-Fi file & 2GB+ video transfer app for Windows PC and Mobile (iOS & Android).**
 
-BeamDrop turns your PC into a hardened local transfer hub. Scan a QR code on your phone to stream original-quality 1GB–2GB+ videos, transfer files both ways with chunked resume, download folders as zero-CPU streaming ZIPs, and sync clipboard links—all over your local Wi-Fi or hotspot with zero external servers.
+Built by **[Atharva Patil | P4inz (`p4inz-code`)](https://github.com/p4inz-code)** — *Open-source software, creative tools & experimental technology.*
 
 ---
 
-## Key Features
+## Screenshots
 
-- **2GB+ Chunked Resumable Uploads (Phone → PC)**: Files slice into 8 MB chunks and write directly to disk at byte offsets—RAM stays flat (~40 MB) with automatic retry, pause/resume, and disk-space pre-checks (`statfs`).
-- **Instant Video Streaming (`HTTP 206 Partial Content`)**: Scrub and play 1GB–2GB+ MP4/MOV/WebM videos directly on your phone without waiting for full downloads, or download at full LAN speed.
-- **Zero-CPU Streaming ZIP**: Download entire folders or multi-file batches as `.zip` using `STORE` mode (`level: 0`) so your PC stays cool and transfers at full Wi-Fi bandwidth.
-- **Security-First Local Pairing**:
-  - QR Code + cryptographically random 4-digit PIN (`crypto.randomInt`)
-  - Per-IP rate limiting & lockout (`PinRateLimiter`) against brute-force attempts
-  - Explicit PC `[Allow] / [Block]` device approval prompt
-  - 256-bit `HttpOnly; SameSite=Strict` session tokens & authenticated WebSockets
-  - Strict path sanitization (`sanitizeFilename`, `resolveSafePath`) & XSS-safe DOM rendering
-- **Live Clipboard & Link Sync**: Instant two-way text/URL drop over WebSockets.
-- **Zero-Install Mobile PWA**: Works in Safari/Chrome on iOS & Android and can be added to the Home Screen.
+| Desktop App (Custom Frameless UI) | Mobile Web / PWA (Thumb-First UI) |
+| :---: | :---: |
+| ![BeamDrop Desktop](docs/screenshots/desktop.png) | ![BeamDrop Mobile](docs/screenshots/mobile.png) |
+
+---
+
+## Why BeamDrop?
+
+- **Zero-Install Phone Client**: Works directly in Safari or Chrome on iOS and Android (installable as a PWA)—no app store downloads required.
+- **2GB+ Video & File Engine**:
+  - **PC → Phone**: Full `HTTP 206 Partial Content` byte-range streaming to scrub and play 1GB–2GB+ MP4/MOV/WebM videos directly, or download at full LAN speed.
+  - **Phone → PC**: **3x parallel 8 MB chunked uploads** with automatic retry, pause/resume, fingerprint-based resume across disconnects, Wake Lock screen protection, and `statfs` disk-space pre-checks.
+  - **Zero-CPU Streaming ZIP**: Download folders or multi-file batches as `.zip` using `STORE` mode (`level: 0`) so your PC stays cool and transfers at full Wi-Fi bandwidth.
+- **Versatile & Hardened Pairing**:
+  - **QR Code (`Level Q` error correction)** with a rotating 128-bit `qrSecret` for 1-scan pairing.
+  - **Instant Connect Link** one-click copy button on PC.
+  - **4-Digit PIN** with per-IP rate limiting & lockout (`PinRateLimiter`) + constant-time verification (`crypto.timingSafeEqual`).
+  - **Explicit PC `[Allow / Block]` Approval** + individual device **Kick** and **Revoke All**.
+- **Security-First Architecture**:
+  - Electron runs with `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, custom frameless window chrome, and strict CSP.
+  - Strict path sanitization (`sanitizeFilename`, `resolveSafePath`) prevents `../` traversal and Windows reserved-name (`CON`, `NUL`, etc.) exploits.
+  - Zero `innerHTML` usage on untrusted data (XSS-safe DOM rendering) + `Origin` CSRF validation + authenticated WebSockets with 25s heartbeat.
 
 ---
 
@@ -27,30 +38,68 @@ BeamDrop turns your PC into a hardened local transfer hub. Scan a QR code on you
 ```mermaid
 flowchart LR
     PC["Electron Desktop App (Windows)"] -->|Serves Mobile PWA + API| Phone["Phone Browser / PWA"]
-    Phone -->|8MB Chunked Upload + Retry| Disk["Save Folder (.beamdrop_tmp -> Final)"]
-    PC -->|HTTP 206 Range / Stream ZIP| Phone
-    PC <-->|WebSocket Sync (Auth Token)| Phone
+    Phone -->|3x Parallel 8MB Chunks + Resume| Disk["Save Folder (.beamdrop_tmp -> Final)"]
+    PC -->|HTTP 206 Range / STORE .ZIP| Phone
+    PC <-->|Authenticated WebSocket + Heartbeat| Phone
 ```
 
 ---
 
-## Quick Start
+## Quick Start (For Anyone)
+
+### Prerequisites
+- **Node.js v20+** (tested on Node.js v24)
+- PC and Phone on the **same Wi-Fi network** or **Windows Mobile Hotspot**
+
+### Run Locally
+```bash
+git clone https://github.com/p4inz-code/beamdrop.git
+cd beamdrop
+npm install
+npm start
+```
+
+### Transfer Videos in 3 Steps
+1. **Drop** your videos, files, or folders into the BeamDrop PC window.
+2. **Scan the QR Code** with your phone camera (or click **Copy Instant Connect Link** / enter the URL + 4-digit PIN).
+3. Click **Allow** on the PC banner, then tap **Stream Video**, **Preview**, **Download**, or **Download .ZIP** on your phone.
+
+> **Windows Firewall Tip**: On first launch, allow **Private networks** in Windows Defender Firewall so your phone can reach the local server. If you enable a Mobile Hotspot after launching, click the **Refresh Network Adapters** button in the sidebar.
+
+---
+
+## Verification & Testing
 
 ```bash
-# 1. Install dependencies
-npm install
-
-# 2. Launch the Desktop App
-npm start
-
-# 3. Run the automated security & integration test suite
 npm test
 ```
 
-> **Windows Firewall Note**: On first launch, allow **Private networks** in Windows Defender Firewall so your phone can reach the local server over Wi-Fi/Hotspot.
+The automated test suite (`node --test`) verifies:
+- Path traversal & Windows reserved filename sanitization
+- PIN brute-force rate limiting & lockout
+- QR secret pairing, PC approval flow, and individual device kick
+- 3-worker parallel out-of-order chunked uploads with SHA-256 integrity
+- Fingerprint-based upload resume
+- `HTTP 206` byte-range video streaming & `416` bounds handling
+- Streaming `.zip` generation (`PK\x03\x04` & `PK\x05\x06` verification)
+- Cross-origin CSRF blocking (`403`) & `EADDRINUSE` port fallback
 
 ---
 
-## License
+## Roadmap (Next Version)
 
-Licensed under the **GNU General Public License v3.0 (GPL-3.0-or-later)**. See [LICENSE](LICENSE) for details.
+- **v1.1 — Discovery & Packaging**:
+  - mDNS (`beamdrop.local`) zero-IP discovery on LAN
+  - Signed Windows `.exe` / NSIS installer via `electron-builder`
+  - Optional local HTTPS (self-signed cert) for native `navigator.clipboard` & PWA install prompts
+- **v2.0 — Pro Media & Multi-Peer**:
+  - Hardware-accelerated optional video transcode profile (for HEVC/MKV compatibility on older phones)
+  - Multi-phone room broadcast & folder two-way sync
+
+---
+
+## Copyright & License
+
+**Copyright (C) 2026 Atharva Patil (`p4inz-code`). All rights reserved.**
+
+This program is free software: you can redistribute it and/or modify it under the terms of the **GNU General Public License v3.0 (GPL-3.0-or-later)** as published by the Free Software Foundation. See [LICENSE](LICENSE) for the full license text.

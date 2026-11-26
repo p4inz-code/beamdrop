@@ -3,6 +3,7 @@ const $ = (id) => document.getElementById(id);
 const transfers = new Map();
 const pendingChallenges = [];
 let allFiles = [];
+let currentQrUrl = '';
 let activeFilter = 'all';
 let searchQuery = '';
 let toastTimer = null;
@@ -52,6 +53,7 @@ function getFileKind(file) {
 }
 
 function renderState(state) {
+  currentQrUrl = state.qrUrl || state.url;
   $('qr-img').src = state.qrDataUrl;
   $('server-url').textContent = state.url;
   $('pin-code').textContent = state.pin;
@@ -339,6 +341,11 @@ $('btn-refresh-net').addEventListener('click', async () => {
 $('btn-copy-url').addEventListener('click', () => {
   navigator.clipboard.writeText($('server-url').textContent);
   showToast('Server URL copied');
+});
+$('btn-copy-invite').addEventListener('click', () => {
+  if (!currentQrUrl) return;
+  navigator.clipboard.writeText(currentQrUrl);
+  showToast('Instant connect link copied');
 });
 $('btn-regen-pin').addEventListener('click', () => {
   window.beamdrop.regeneratePin();

@@ -363,6 +363,10 @@ body {
   font-size: 11px;
 }
 
+.btn-full-w {
+  width: 100%;
+}
+
 .btn-icon {
   background: var(--bg);
   border: 1px solid var(--border);

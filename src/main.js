@@ -33,6 +33,7 @@ async function buildAppState() {
 
   return {
     url,
+    qrUrl,
     qrDataUrl,
     pin: server.pin,
     port: server.port,

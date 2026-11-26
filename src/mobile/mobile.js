@@ -190,7 +190,7 @@ function connectWebSocket() {
   };
 }
 
-// Pairing (PIN or QR Secret)
+// Pairing
 async function submitPair({ pin = '', qrSecret = '' }) {
   $('btn-pair').disabled = true;
   $('auth-status').textContent = qrSecret ? 'Verifying QR code...' : 'Verifying PIN...';
@@ -251,6 +251,11 @@ $('btn-pair').addEventListener('click', () => {
   submitPair({ pin });
 });
 
+$('btn-refresh').addEventListener('click', () => {
+  loadInitialData();
+  showToast('Refreshed');
+});
+
 // Filter pills & search
 document.querySelectorAll('.pill').forEach((pill) => {
   pill.addEventListener('click', () => {
@@ -284,7 +289,7 @@ function renderFiles(files) {
     const empty = document.createElement('div');
     empty.className = 'muted';
     empty.style.textAlign = 'center';
-    empty.style.padding = '28px';
+    empty.style.padding = '32px 12px';
     empty.textContent = files.length === 0 ? 'No files shared from PC yet.' : 'No files match this filter.';
     list.appendChild(empty);
     return;
@@ -314,6 +319,7 @@ function renderFiles(files) {
       thumb.loading = 'lazy';
       thumb.src = `/api/files/${encodeURIComponent(file.id)}/stream?token=${encodeURIComponent(authToken)}`;
       thumb.alt = file.name;
+      thumb.addEventListener('click', () => openImageModal(file));
       top.appendChild(thumb);
     } else {
       const kind = file.isDirectory ? 'folder' : file.mimeType.startsWith('video/') ? 'video' : 'file';
@@ -344,6 +350,12 @@ function renderFiles(files) {
       playBtn.textContent = 'Stream Video';
       playBtn.addEventListener('click', () => openVideoModal(file));
       actions.appendChild(playBtn);
+    } else if (!file.isDirectory && file.mimeType.startsWith('image/')) {
+      const previewBtn = document.createElement('button');
+      previewBtn.className = 'btn btn-primary btn-sm';
+      previewBtn.textContent = 'Preview';
+      previewBtn.addEventListener('click', () => openImageModal(file));
+      actions.appendChild(previewBtn);
     }
 
     const dlLink = document.createElement('a');
@@ -381,7 +393,7 @@ $('btn-download-zip').addEventListener('click', () => {
   location.href = `/api/zip?ids=${encodeURIComponent(ids)}&token=${encodeURIComponent(authToken)}`;
 });
 
-// Video modal
+// Video & Image Modals
 function openVideoModal(file) {
   $('video-title').textContent = file.name;
   $('video-player').src = `/api/files/${encodeURIComponent(file.id)}/stream?token=${encodeURIComponent(authToken)}`;
@@ -396,7 +408,18 @@ $('btn-close-video').addEventListener('click', () => {
   $('video-modal').classList.add('hidden');
 });
 
-// Chunked Upload Engine (2GB+ resumable across disconnects)
+function openImageModal(file) {
+  $('image-title').textContent = file.name;
+  $('image-preview').src = `/api/files/${encodeURIComponent(file.id)}/stream?token=${encodeURIComponent(authToken)}`;
+  $('image-modal').classList.remove('hidden');
+}
+
+$('btn-close-image').addEventListener('click', () => {
+  $('image-preview').removeAttribute('src');
+  $('image-modal').classList.add('hidden');
+});
+
+// Chunked Upload Engine (3x parallel + resume)
 $('btn-send-files').addEventListener('click', () => $('file-picker').click());
 $('file-picker').addEventListener('change', (e) => {
   const files = Array.from(e.target.files || []);
@@ -515,7 +538,17 @@ async function startChunkedUpload(file) {
 function renderUploads() {
   const sec = $('uploads-section');
   const list = $('uploads-list');
+  const badge = $('uploads-badge');
   const items = Array.from(activeUploads.values());
+  const activeCount = items.filter((u) => u.percent < 100 && !u.cancelled).length;
+
+  if (activeCount > 0) {
+    badge.textContent = String(activeCount);
+    badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+  }
+
   if (items.length === 0) {
     sec.classList.add('hidden');
     return;
@@ -624,13 +657,13 @@ $('btn-send-clip').addEventListener('click', async () => {
   showToast('Sent to PC');
 });
 
-// Tabs
-document.querySelectorAll('.tab').forEach((tab) => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+// Bottom Navigation Tabs
+document.querySelectorAll('.nav-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.nav-btn').forEach((b) => b.classList.remove('active'));
     document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
-    tab.classList.add('active');
-    $(`tab-${tab.dataset.tab}`).classList.add('active');
+    btn.classList.add('active');
+    $(`tab-${btn.dataset.tab}`).classList.add('active');
   });
 });
 
