@@ -135,6 +135,11 @@ class PinRateLimiter {
     if (rec.count >= this.maxAttempts) {
       rec.lockedUntil = now + this.lockoutMs;
     }
+    if (!this.records.has(ip) && this.records.size >= 5000) {
+      // Evict oldest entry to bound memory under spoofed/flood traffic
+      const oldest = this.records.keys().next().value;
+      if (oldest) this.records.delete(oldest);
+    }
     this.records.set(ip, rec);
     return {
       attemptsLeft: Math.max(0, this.maxAttempts - rec.count),

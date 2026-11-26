@@ -872,6 +872,7 @@ class BeamDropServer extends EventEmitter {
         'Content-Type': item.mimeType,
         'Content-Length': totalSize,
         'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(item.name)}`,
+        'Content-Security-Policy': "sandbox; default-src 'none';",
         'Accept-Ranges': 'bytes'
       });
       const stream = fs.createReadStream(item.filePath, { highWaterMark: 1024 * 1024 });
@@ -909,7 +910,8 @@ class BeamDropServer extends EventEmitter {
         'Content-Range': `bytes ${start}-${end}/${totalSize}`,
         'Accept-Ranges': 'bytes',
         'Content-Length': chunkLen,
-        'Content-Type': item.mimeType
+        'Content-Type': item.mimeType,
+        'Content-Security-Policy': "sandbox; default-src 'none';"
       };
       if (mode === 'download') {
         headers['Content-Disposition'] = `attachment; filename*=UTF-8''${encodeURIComponent(item.name)}`;
@@ -928,6 +930,7 @@ class BeamDropServer extends EventEmitter {
     res.writeHead(200, {
       'Content-Type': item.mimeType,
       'Content-Length': totalSize,
+      'Content-Security-Policy': "sandbox; default-src 'none';",
       'Accept-Ranges': 'bytes'
     });
     const stream = fs.createReadStream(item.filePath, { highWaterMark: 512 * 1024 });
@@ -1363,6 +1366,11 @@ class BeamDropServer extends EventEmitter {
         return;
       }
       if (url.pathname !== '/ws') {
+        socket.destroy();
+        return;
+      }
+      if (!this.validateSameOrigin(req)) {
+        socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
         socket.destroy();
         return;
       }

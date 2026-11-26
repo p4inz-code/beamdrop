@@ -632,4 +632,23 @@ test('v1.3.0: SettingsStore, DiagnosticsLogger, HTTPS TLS, and Upload SHA-256 ve
   await fsp.rm(path.join(dirA, 'clip.mp4'));
   const pruned = await httpServer.pruneMissingSharedItems();
   assert.equal(pruned, true);
+
+  // 9. CSWSH WebSocket Origin block + sandboxed CSP on streamed SVG/HTML
+  await assert.rejects(
+    () =>
+      new Promise((resolve, reject) => {
+        const evilWs = new WebSocket(`ws://127.0.0.1:${httpPort}/ws?token=${pair.token}`, {
+          headers: { Origin: 'http://evil.attacker.com' }
+        });
+        evilWs.on('open', () => resolve());
+        evilWs.on('error', reject);
+      })
+  );
+
+  const svgPath = path.join(dirB, 'payload.svg');
+  await fsp.writeFile(svgPath, '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+  const [svgItem] = await httpServer.addSharedPaths([svgPath], 'pc');
+  const svgStream = await fetch(`${base}/api/files/${svgItem.id}/stream`, { headers });
+  assert.equal(svgStream.status, 200);
+  assert.equal(svgStream.headers.get('content-security-policy'), "sandbox; default-src 'none';");
 });

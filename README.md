@@ -81,7 +81,7 @@ npm start
 - [Privacy Policy](PRIVACY.md) — Zero-telemetry, local-only data guarantee
 - [Known Issues](docs/KNOWN_ISSUES.md) — Network & codec workarounds
 - [Roadmap](ROADMAP.md) — Upcoming milestones
-- [Security Policy](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security Policy](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [Third-Party Notices](THIRD_PARTY_NOTICES.md)
 
 ---
 

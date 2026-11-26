@@ -25,7 +25,9 @@
 1. **Performance Engineering**:
    - Zero-copy `Buffer.allocUnsafe(expectedLen)` chunk receiver; `1 MB` `highWaterMark` disk streams; `O(1)` `sharedByPath` lookup; `maxRequestsPerSocket = 0`; 4x parallel mobile chunk workers; state-diffed 5-second background sync.
 2. **Red-Team Security Fixes Verified**:
-   - `User-Agent`-bound session tokens (`401` on replay from another client), one-time `challengeId` pickup, TOCTOU filename reservation (`reservedPaths`), malformed `Host` header guard, `JSON null`/`[]` type-confusion guard, `MAX_CONCURRENT_UPLOADS = 16`, `depth > 32` & symlink skip in `.zip` streaming, duplicate ZIP entry deduplication, BiDi Unicode filename stripping, and `ff.stderr` deadlock fix.
+   - `User-Agent`-bound session tokens (`401` on replay from another client), Cross-Site WebSocket Hijacking (CSWSH) `Origin` check (`403` on `/ws` upgrade), sandboxed `Content-Security-Policy: sandbox; default-src 'none';` on streamed/downloaded user files, `PinRateLimiter` 5,000-IP memory cap + monotonic clock, one-time `challengeId` pickup, TOCTOU filename reservation (`reservedPaths`), malformed `Host` header guard, `JSON null`/`[]` type-confusion guard, `MAX_CONCURRENT_UPLOADS = 16`, `depth > 32` & symlink skip in `.zip` streaming, duplicate ZIP entry deduplication, BiDi Unicode filename stripping, and `ff.stderr` deadlock fix.
+3. **Legal & Compliance Pillar**:
+   - Verbatim GNU GPLv3 [`LICENSE`](LICENSE), [`NOTICE`](NOTICE) (`Copyright (C) 2026 Atharva Patil (p4inz-code)`), [`PRIVACY.md`](PRIVACY.md), [`SECURITY.md`](SECURITY.md), [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md), and [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 3. **Automated Test Suite (`npm test`)**:
    - **7 / 7 tests passed, 0 failed** across security, integration, resilience, TLS, and SHA-256 verification.
 4. **Runtime, Visual & Packaging Verification**:
