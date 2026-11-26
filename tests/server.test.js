@@ -9,7 +9,7 @@ const WebSocket = require('ws');
 
 const { BeamDropServer } = require('../src/server');
 const { sanitizeFilename, resolveSafePath, isSafeHttpUrl, PinRateLimiter } = require('../src/security');
-const { SettingsStore } = require('../src/settings');
+const { SettingsStore, sanitizeSettings } = require('../src/settings');
 const { DiagnosticsLogger } = require('../src/logger');
 const { probeLanReachability, getOrCreateLocalCert } = require('../src/network');
 
@@ -21,10 +21,11 @@ test('Security: isSafeHttpUrl allows http/https and blocks javascript/data/file 
   assert.equal(isSafeHttpUrl('file:///C:/Windows/System32'), false);
 });
 
-test('Security: sanitizeFilename blocks traversal, null bytes, and Windows reserved names', () => {
+test('Security: sanitizeFilename blocks traversal, null bytes, BiDi overrides, and Windows reserved names', () => {
   assert.equal(sanitizeFilename('../../etc/passwd'), 'passwd');
   assert.equal(sanitizeFilename('..\\..\\Windows\\System32\\cmd.exe'), 'cmd.exe');
   assert.equal(sanitizeFilename('bad\x00name.mp4'), 'bad_name.mp4');
+  assert.equal(sanitizeFilename('video\u202egpj.exe'), 'video_gpj.exe');
   assert.equal(sanitizeFilename('CON.txt'), '_CON.txt');
   assert.equal(sanitizeFilename('...'), 'unnamed_file');
 });
@@ -498,4 +499,137 @@ test('v1.3.0: SettingsStore, DiagnosticsLogger, HTTPS TLS, and Upload SHA-256 ve
   })).json();
   assert.equal(okComp.completed, true);
   assert.equal(okComp.sha256Verified, true);
+
+  // 5. 0-byte file stream & Range 416 + concurrent upload cap (429)
+  const zInit = await (await fetch(`${base}/api/upload/init`, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename: 'zero.txt', totalSize: 0 })
+  })).json();
+  const zComp = await (await fetch(`${base}/api/upload/complete/${zInit.uploadId}`, {
+    method: 'POST',
+    headers
+  })).json();
+  const zStream = await fetch(`${base}/api/files/${zComp.file.id}/stream`, { headers });
+  assert.equal(zStream.status, 200);
+  assert.equal(zStream.headers.get('content-length'), '0');
+  const zRange = await fetch(`${base}/api/files/${zComp.file.id}/stream`, {
+    headers: { ...headers, Range: 'bytes=0-1' }
+  });
+  assert.equal(zRange.status, 416);
+
+  // Concurrent upload cap (16) -> 17th returns 429
+  const createdIds = [];
+  for (let i = 0; i < 16; i++) {
+    const r = await fetch(`${base}/api/upload/init`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: `cap_${i}.bin`, totalSize: 1024 })
+    });
+    assert.equal(r.status, 200);
+    createdIds.push((await r.json()).uploadId);
+  }
+  const overCap = await fetch(`${base}/api/upload/init`, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename: 'cap_overflow.bin', totalSize: 1024 })
+  });
+  assert.equal(overCap.status, 429);
+  for (const id of createdIds) {
+    await fetch(`${base}/api/upload/${id}`, { method: 'DELETE', headers });
+  }
+
+  // 6. Security Audit: one-time challenge pickup, concurrent filename reservation, malformed Host
+  const rawSocketRes = await new Promise((resolve) => {
+    const net = require('node:net');
+    const sock = net.createConnection({ host: '127.0.0.1', port: httpPort }, () => {
+      sock.write('GET /api/health HTTP/1.1\r\nHost: bad host:99999\r\nConnection: close\r\n\r\n');
+    });
+    let data = '';
+    sock.on('data', (d) => { data += d.toString(); });
+    sock.on('end', () => resolve(data));
+  });
+  assert.ok(rawSocketRes.startsWith('HTTP/1.1 200 OK'));
+
+  // Concurrent upload init with identical filename must reserve distinct finalPaths
+  const [c1, c2] = await Promise.all([
+    fetch(`${base}/api/upload/init`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: 'dup_test.mp4', totalSize: 100 })
+    }).then((r) => r.json()),
+    fetch(`${base}/api/upload/init`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: 'dup_test.mp4', totalSize: 100 })
+    }).then((r) => r.json())
+  ]);
+  assert.notEqual(c1.filename, c2.filename);
+  await fetch(`${base}/api/upload/${c1.uploadId}`, { method: 'DELETE', headers });
+  await fetch(`${base}/api/upload/${c2.uploadId}`, { method: 'DELETE', headers });
+
+  // 7. Red-Team JSON null/array payload rejection (400, not 500) + Logger sanitization + SettingsStore null safety
+  const nullPair = await fetch(`${base}/api/auth/pair`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: 'null'
+  });
+  assert.equal(nullPair.status, 400);
+
+  const arrUpload = await fetch(`${base}/api/upload/init`, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: '[]'
+  });
+  assert.equal(arrUpload.status, 400);
+
+  const nullSettings = sanitizeSettings(null, 'C:\\Fallback');
+  assert.equal(nullSettings.port, 5050);
+  assert.equal(nullSettings.saveDir, 'C:\\Fallback');
+
+  const dirtySettings = sanitizeSettings({ saveDir: 'bad\x00dir', port: 'abc' }, 'C:\\Fallback');
+  assert.equal(dirtySettings.port, 5050);
+  assert.ok(!dirtySettings.saveDir.includes('\x00'));
+
+  // Logger newline injection & length cap check
+  await logger.info('Audit', 'line1\r\nline2\n' + 'x'.repeat(500));
+  const diag = await logger.getDiagnosticsReport({ version: '1.3.0', port: 5050 });
+  assert.ok(!diag.includes('line1\r\nline2'));
+
+  // Reject totalSize: null / "" (must not coerce to 0-byte upload)
+  const badSizeRes = await fetch(`${base}/api/upload/init`, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename: 'sneaky.bin', totalSize: null })
+  });
+  assert.equal(badSizeRes.status, 400);
+
+  // Batch ZIP deduplication for same-named files in different directories
+  const dirA = path.join(tmpRoot, 'dirA');
+  const dirB = path.join(tmpRoot, 'dirB');
+  await fsp.mkdir(dirA, { recursive: true });
+  await fsp.mkdir(dirB, { recursive: true });
+  await fsp.writeFile(path.join(dirA, 'clip.mp4'), 'AAA');
+  await fsp.writeFile(path.join(dirB, 'clip.mp4'), 'BBB');
+  const [itemA, itemB] = await httpServer.addSharedPaths([
+    path.join(dirA, 'clip.mp4'),
+    path.join(dirB, 'clip.mp4')
+  ], 'pc');
+  const dupZipRes = await fetch(`${base}/api/zip?ids=${itemA.id},${itemB.id}`, { headers });
+  assert.equal(dupZipRes.status, 200);
+  const dupZipBuf = Buffer.from(await dupZipRes.arrayBuffer());
+  assert.ok(dupZipBuf.includes(Buffer.from('clip.mp4', 'utf8')));
+  assert.ok(dupZipBuf.includes(Buffer.from('clip (1).mp4', 'utf8')));
+
+  // 8. UA-bound session token rejection + 30GB limit + pruneMissingSharedItems
+  assert.equal(httpServer.maxFileSize, 30 * 1024 * 1024 * 1024);
+
+  const stolenUaRes = await fetch(`${base}/api/files`, {
+    headers: { Authorization: `Bearer ${pair.token}`, 'User-Agent': 'EvilAttackerCurl/1.0' }
+  });
+  assert.equal(stolenUaRes.status, 401);
+
+  await fsp.rm(path.join(dirA, 'clip.mp4'));
+  const pruned = await httpServer.pruneMissingSharedItems();
+  assert.equal(pruned, true);
 });

@@ -2,6 +2,19 @@
 
 All notable changes to **BeamDrop** are documented in this file.
 
+## [1.4.0] - 2026-11-27
+
+### Performance & Engineering
+- **Zero-Copy Chunk Buffers**: `PUT /api/upload/chunk` writes directly into pre-allocated chunk buffers when `Content-Length` matches, eliminating intermediate `Buffer.concat()` copies across 30 GB uploads.
+- **`O(1)` Shared Path Indexing**: Added `sharedByPath` map for instant duplicate checks when sharing large folders.
+- **1 MB Stream Buffers & 4x Parallel Chunks**: Increased disk `highWaterMark` to `1 MB`, set `maxRequestsPerSocket = 0`, and bumped mobile upload concurrency to 4 workers.
+- **Smart 5s Sync**: Background 5-second health/adapter sync now pushes Electron IPC updates only when adapters, reachability, or file existence actually change.
+
+### UI, Security & Branding
+- **Clean Monochrome Desktop & Mobile UI**: Removed SaaS/indigo styling tropes for a fast, neutral `#0c0c0e` utility design with Dark & Light themes, 100% custom form controls (zero native OS spin arrows/selects), bigger `184×184` QR, and zero-jitter mobile refresh.
+- **New App Icon (`build/icon.png`)**: Updated 512×512 geometric transfer-beam mark.
+- **Hardening & Red-Team Fixes**: 30 GB file size cap, `User-Agent`-bound session tokens, `TLSv1.2+`, one-time challenge token pickup, TOCTOU filename reservation (`reservedPaths`), malformed `Host` guard, and `ff.stderr` deadlock fix.
+
 ## [1.3.0] - 2026-11-27
 
 ### Added

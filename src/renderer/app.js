@@ -7,9 +7,15 @@ let allFiles = [];
 let visibleLimit = PAGE_SIZE;
 let currentQrUrl = '';
 let currentState = null;
+let selectedTheme = 'dark';
 let activeFilter = 'all';
 let searchQuery = '';
 let toastTimer = null;
+let lastFilesSig = '';
+let lastSessionsSig = '';
+let lastTrustedSig = '';
+let lastClipSig = '';
+let lastIfacesSig = '';
 
 function isSafeHttpUrl(raw) {
   if (typeof raw !== 'string') return false;
@@ -67,11 +73,27 @@ function getFileKind(file) {
   return 'file';
 }
 
+function applyTheme(theme) {
+  selectedTheme = theme === 'light' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', selectedTheme);
+  document.querySelectorAll('#theme-seg .seg-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.themeVal === selectedTheme);
+  });
+}
+
 function renderState(state) {
   currentState = state;
   currentQrUrl = state.qrUrl || state.url;
-  $('qr-img').src = state.qrDataUrl;
-  $('qr-large-img').src = state.qrDataUrl;
+
+  if (state.settings && state.settings.theme) {
+    applyTheme(state.settings.theme);
+  }
+
+  if ($('qr-img').src !== state.qrDataUrl) {
+    $('qr-img').src = state.qrDataUrl;
+    $('qr-large-img').src = state.qrDataUrl;
+  }
+
   $('server-url').textContent = state.url;
   $('qr-large-url').textContent = state.url;
   $('pin-code').textContent = state.pin;
@@ -96,17 +118,30 @@ function renderState(state) {
     txt.textContent = 'VPN Active';
   } else {
     dot.classList.remove('warn');
-    txt.textContent = state.useHttps ? 'HTTPS Ready' : 'LAN Ready';
+    txt.textContent = state.useHttps ? 'Encrypted Ready' : 'Ready';
   }
 
-  const select = $('iface-select');
-  select.textContent = '';
-  for (const iface of state.interfaces) {
-    const opt = document.createElement('option');
-    opt.value = iface.address;
-    opt.textContent = `${iface.name} (${iface.address})`;
-    if (iface.address === state.selectedAddress) opt.selected = true;
-    select.appendChild(opt);
+  const ifacesSig = `${state.selectedAddress}|${JSON.stringify(state.interfaces)}`;
+  if (ifacesSig !== lastIfacesSig) {
+    lastIfacesSig = ifacesSig;
+    const activeIface = state.interfaces.find((i) => i.address === state.selectedAddress);
+    $('iface-current').textContent = activeIface
+      ? `${activeIface.name} (${activeIface.address})`
+      : state.selectedAddress;
+
+    const menu = $('iface-menu');
+    menu.textContent = '';
+    for (const iface of state.interfaces) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `custom-select-opt${iface.address === state.selectedAddress ? ' active' : ''}`;
+      btn.textContent = `${iface.name} (${iface.address})`;
+      btn.addEventListener('click', () => {
+        menu.classList.add('hidden');
+        window.beamdrop.selectInterface(iface.address);
+      });
+      menu.appendChild(btn);
+    }
   }
 
   renderFiles(state.files);
@@ -115,7 +150,10 @@ function renderState(state) {
   renderClipboard(state.clipboard);
 }
 
-function renderFiles(files) {
+function renderFiles(files, force = false) {
+  const sig = JSON.stringify(files);
+  if (!force && sig === lastFilesSig) return;
+  lastFilesSig = sig;
   allFiles = files;
   $('files-count').textContent = String(files.length);
   const list = $('files-list');
@@ -156,8 +194,8 @@ function renderFiles(files) {
     const subEl = document.createElement('div');
     subEl.className = 'item-sub';
     subEl.textContent = file.isDirectory
-      ? `Folder (.zip) · Source: ${file.source.toUpperCase()}`
-      : `${formatBytes(file.size)} · Source: ${file.source.toUpperCase()}`;
+      ? `Folder (.zip) · From ${file.source.toUpperCase()}`
+      : `${formatBytes(file.size)} · From ${file.source.toUpperCase()}`;
 
     meta.appendChild(nameEl);
     meta.appendChild(subEl);
@@ -178,7 +216,7 @@ function renderFiles(files) {
     moreBtn.textContent = `Show More (${filtered.length - visibleLimit} remaining)`;
     moreBtn.addEventListener('click', () => {
       visibleLimit += PAGE_SIZE;
-      renderFiles(allFiles);
+      renderFiles(allFiles, true);
     });
     list.appendChild(moreBtn);
   }
@@ -211,7 +249,7 @@ function renderTransfers() {
     const badge = document.createElement('span');
     const isDownload = t.direction === 'download';
     badge.className = `dir-badge ${isDownload ? 'dir-down' : 'dir-up'}`;
-    badge.textContent = isDownload ? 'PC -> PHONE' : 'PHONE -> PC';
+    badge.textContent = isDownload ? 'PC -> DEVICE' : 'DEVICE -> PC';
 
     nameEl.appendChild(badge);
     nameEl.appendChild(document.createTextNode(t.filename));
@@ -254,6 +292,9 @@ function renderTransfers() {
 }
 
 function renderSessions(sessions) {
+  const sig = JSON.stringify(sessions);
+  if (sig === lastSessionsSig) return;
+  lastSessionsSig = sig;
   $('session-count').textContent = String(sessions.length);
   const list = $('sessions-list');
   list.textContent = '';
@@ -270,6 +311,7 @@ function renderSessions(sessions) {
     li.className = 'session-item';
 
     const label = document.createElement('span');
+    label.className = 'truncate';
     label.textContent = `${s.deviceName} — ${s.ip}`;
 
     const kickBtn = document.createElement('button');
@@ -287,6 +329,9 @@ function renderSessions(sessions) {
 }
 
 function renderTrusted(trusted) {
+  const sig = JSON.stringify(trusted);
+  if (sig === lastTrustedSig) return;
+  lastTrustedSig = sig;
   const wrap = $('trusted-wrap');
   const list = $('trusted-list');
   $('trusted-count').textContent = String(trusted.length);
@@ -301,6 +346,7 @@ function renderTrusted(trusted) {
     li.className = 'session-item';
 
     const label = document.createElement('span');
+    label.className = 'truncate';
     label.textContent = td.deviceName;
 
     const forgetBtn = document.createElement('button');
@@ -318,6 +364,9 @@ function renderTrusted(trusted) {
 }
 
 function renderClipboard(entries) {
+  const sig = JSON.stringify(entries);
+  if (sig === lastClipSig) return;
+  lastClipSig = sig;
   const list = $('clip-list');
   list.textContent = '';
   for (const entry of entries) {
@@ -356,7 +405,7 @@ function renderClipboard(entries) {
     copyBtn.textContent = 'Copy';
     copyBtn.addEventListener('click', () => {
       navigator.clipboard.writeText(entry.text);
-      showToast('Copied to clipboard');
+      showToast('Copied');
     });
     btns.appendChild(copyBtn);
 
@@ -378,7 +427,7 @@ function renderApprovalBanner() {
   banner.classList.remove('hidden');
 
   const msg = document.createElement('span');
-  msg.textContent = `Device "${ch.deviceName}" (${ch.ip}) requests access.`;
+  msg.textContent = `${ch.deviceName} (${ch.ip}) wants to connect.`;
 
   const actions = document.createElement('div');
   actions.className = 'btn-row';
@@ -395,12 +444,12 @@ function renderApprovalBanner() {
 
   const trustBtn = document.createElement('button');
   trustBtn.className = 'btn btn-sm';
-  trustBtn.textContent = 'Allow & Trust';
+  trustBtn.textContent = 'Allow & Remember';
   trustBtn.addEventListener('click', async () => {
     await window.beamdrop.approveChallenge(ch.id, true, true);
     pendingChallenges.shift();
     renderApprovalBanner();
-    showToast(`${ch.deviceName} trusted`);
+    showToast(`${ch.deviceName} remembered`);
   });
 
   const blockBtn = document.createElement('button');
@@ -424,6 +473,13 @@ $('win-min').addEventListener('click', () => window.beamdrop.minimizeWindow());
 $('win-max').addEventListener('click', () => window.beamdrop.maximizeWindow());
 $('win-close').addEventListener('click', () => window.beamdrop.closeWindow());
 
+// Custom Adapter Dropdown
+$('iface-trigger').addEventListener('click', (e) => {
+  e.stopPropagation();
+  $('iface-menu').classList.toggle('hidden');
+});
+document.addEventListener('click', () => $('iface-menu').classList.add('hidden'));
+
 // Tabs
 document.querySelectorAll('.tab').forEach((tab) => {
   tab.addEventListener('click', () => {
@@ -434,35 +490,41 @@ document.querySelectorAll('.tab').forEach((tab) => {
   });
 });
 
-// Filter pills & search
+// Filter pills & custom search clear
 document.querySelectorAll('.pill').forEach((pill) => {
   pill.addEventListener('click', () => {
     document.querySelectorAll('.pill').forEach((p) => p.classList.remove('active'));
     pill.classList.add('active');
     activeFilter = pill.dataset.filter;
-    renderFiles(allFiles);
+    renderFiles(allFiles, true);
   });
 });
 
 $('file-search').addEventListener('input', (e) => {
   searchQuery = e.target.value.trim().toLowerCase();
-  renderFiles(allFiles);
+  $('btn-clear-search').classList.toggle('hidden', !searchQuery);
+  renderFiles(allFiles, true);
+});
+$('btn-clear-search').addEventListener('click', () => {
+  $('file-search').value = '';
+  searchQuery = '';
+  $('btn-clear-search').classList.add('hidden');
+  renderFiles(allFiles, true);
 });
 
 // Controls
-$('iface-select').addEventListener('change', (e) => window.beamdrop.selectInterface(e.target.value));
 $('btn-refresh-net').addEventListener('click', async () => {
   await window.beamdrop.refreshNetwork();
-  showToast('Network adapters refreshed');
+  showToast('Networks refreshed');
 });
 $('btn-copy-url').addEventListener('click', () => {
   navigator.clipboard.writeText($('server-url').textContent);
-  showToast('Server URL copied');
+  showToast('Address copied');
 });
 $('btn-copy-invite').addEventListener('click', () => {
   if (!currentQrUrl) return;
   navigator.clipboard.writeText(currentQrUrl);
-  showToast('Instant connect link copied');
+  showToast('One-tap link copied');
 });
 $('btn-regen-pin').addEventListener('click', () => {
   window.beamdrop.regeneratePin();
@@ -473,7 +535,7 @@ $('btn-change-save').addEventListener('click', () => window.beamdrop.pickSaveDir
 $('btn-open-save').addEventListener('click', () => window.beamdrop.openSaveDir());
 $('btn-revoke').addEventListener('click', () => {
   window.beamdrop.revokeSessions();
-  showToast('All device sessions revoked');
+  showToast('All devices disconnected');
 });
 $('btn-pick-files').addEventListener('click', () => window.beamdrop.pickFiles());
 $('btn-pick-folder').addEventListener('click', () => window.beamdrop.pickFolder());
@@ -483,15 +545,16 @@ $('btn-clear-files').addEventListener('click', async () => {
 });
 $('btn-paste-send').addEventListener('click', async () => {
   const entry = await window.beamdrop.pasteAndSendClipboard();
-  if (entry) showToast('OS clipboard sent to phone');
+  if (entry) showToast('Clipboard sent');
   else showToast('Clipboard is empty');
 });
+
 const sendClipboardText = async () => {
   const val = $('clip-input').value.trim();
   if (!val) return;
   await window.beamdrop.sendClipboard(val);
   $('clip-input').value = '';
-  showToast('Sent to phone');
+  showToast('Sent');
 };
 $('btn-send-clip').addEventListener('click', sendClipboardText);
 $('clip-input').addEventListener('keydown', (e) => {
@@ -529,13 +592,30 @@ document.body.addEventListener('drop', async (e) => {
   }
 });
 
-// Modals, Network Tools & Keyboard Shortcuts
+// Modals, Custom Stepper, Theme & Shortcuts
 $('qr-img').addEventListener('click', () => $('qr-modal').classList.remove('hidden'));
 $('btn-close-qr').addEventListener('click', () => $('qr-modal').classList.add('hidden'));
+
+$('btn-open-help').addEventListener('click', () => $('help-modal').classList.remove('hidden'));
+$('btn-close-help').addEventListener('click', () => $('help-modal').classList.add('hidden'));
+
+document.querySelectorAll('#theme-seg .seg-btn').forEach((btn) => {
+  btn.addEventListener('click', () => applyTheme(btn.dataset.themeVal));
+});
+
+$('btn-port-dec').addEventListener('click', () => {
+  const v = Math.max(1024, (Number($('set-port').value) || 5050) - 1);
+  $('set-port').value = String(v);
+});
+$('btn-port-inc').addEventListener('click', () => {
+  const v = Math.min(65535, (Number($('set-port').value) || 5050) + 1);
+  $('set-port').value = String(v);
+});
 
 $('btn-open-settings').addEventListener('click', () => {
   if (currentState && currentState.settings) {
     const s = currentState.settings;
+    applyTheme(s.theme || 'dark');
     $('set-port').value = String(s.port);
     $('set-mdns').checked = Boolean(s.enableMdns);
     $('set-https').checked = Boolean(s.useHttps);
@@ -550,6 +630,7 @@ $('btn-close-settings').addEventListener('click', () => $('settings-modal').clas
 $('btn-save-settings').addEventListener('click', async () => {
   const port = Number($('set-port').value);
   await window.beamdrop.updateSettings({
+    theme: selectedTheme,
     port,
     enableMdns: $('set-mdns').checked,
     useHttps: $('set-https').checked,
@@ -563,7 +644,7 @@ $('btn-save-settings').addEventListener('click', async () => {
 $('btn-copy-diag').addEventListener('click', async () => {
   const report = await window.beamdrop.getDiagnostics();
   navigator.clipboard.writeText(report);
-  showToast('Diagnostics copied');
+  showToast('Support info copied');
 });
 
 $('btn-fix-fw').addEventListener('click', async () => {
@@ -577,6 +658,8 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     $('qr-modal').classList.add('hidden');
     $('settings-modal').classList.add('hidden');
+    $('help-modal').classList.add('hidden');
+    $('iface-menu').classList.add('hidden');
   } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'o') {
     e.preventDefault();
     window.beamdrop.pickFolder();
@@ -591,7 +674,7 @@ document.addEventListener('keydown', (e) => {
 
 // Events
 window.beamdrop.onStateChanged(renderState);
-window.beamdrop.onFilesChanged(renderFiles);
+window.beamdrop.onFilesChanged((files) => renderFiles(files));
 window.beamdrop.onSessionsChanged(renderSessions);
 window.beamdrop.onClipboardChanged(renderClipboard);
 window.beamdrop.onTransferUpdate((t) => {

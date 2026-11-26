@@ -4,8 +4,10 @@ const CHUNK_SIZE = 8 * 1024 * 1024;
 const PAGE_SIZE = 50;
 let authToken = localStorage.getItem('bd_token') || '';
 let trustKey = localStorage.getItem('bd_trust_key') || '';
+let currentTheme = localStorage.getItem('bd_theme') || 'dark';
 let ws = null;
 let reconnectTimer = null;
+let syncTimer = null;
 let reconnectDelay = 1000;
 let isLoggedIn = false;
 let filesCache = [];
@@ -15,8 +17,17 @@ let activeFilter = 'all';
 let searchQuery = '';
 let wakeLock = null;
 let toastTimer = null;
+let lastFilesSig = '';
+let lastClipSig = '';
 const selectedIds = new Set();
 const activeUploads = new Map();
+
+document.documentElement.setAttribute('data-theme', currentTheme);
+
+// Protect sensitive auth & session UI from casual right-click / long-press inspect
+$('auth-screen').addEventListener('contextmenu', (e) => e.preventDefault());
+document.querySelector('.topbar').addEventListener('contextmenu', (e) => e.preventDefault());
+document.querySelector('.bottom-nav').addEventListener('contextmenu', (e) => e.preventDefault());
 
 function isSafeHttpUrl(raw) {
   if (typeof raw !== 'string') return false;
@@ -111,11 +122,24 @@ function formatBytes(bytes) {
 }
 
 function detectDeviceName() {
-  const ua = navigator.userAgent;
-  if (/iPhone/i.test(ua)) return 'iPhone';
-  if (/iPad/i.test(ua)) return 'iPad';
-  if (/Android/i.test(ua)) return 'Android Phone';
-  return 'Mobile Browser';
+  const ua = navigator.userAgent || '';
+  const browser = /Edg\//i.test(ua)
+    ? 'Edge'
+    : /Firefox\//i.test(ua)
+      ? 'Firefox'
+      : /Chrome\//i.test(ua)
+        ? 'Chrome'
+        : /Safari\//i.test(ua)
+          ? 'Safari'
+          : 'Browser';
+
+  if (/iPhone/i.test(ua)) return `iPhone (${browser})`;
+  if (/iPad/i.test(ua)) return `iPad (${browser})`;
+  if (/Android/i.test(ua)) return `Android Phone (${browser})`;
+  if (/Windows/i.test(ua)) return `Windows PC (${browser})`;
+  if (/Macintosh|Mac OS X/i.test(ua)) return `Mac (${browser})`;
+  if (/Linux/i.test(ua)) return `Linux PC (${browser})`;
+  return `Web (${browser})`;
 }
 
 async function apiFetch(url, options = {}) {
@@ -135,6 +159,10 @@ function showApp() {
   $('app-screen').classList.remove('hidden');
   connectWebSocket();
   loadInitialData();
+  clearInterval(syncTimer);
+  syncTimer = setInterval(() => {
+    if (isLoggedIn) loadInitialData(true);
+  }, 5000);
 }
 
 function logout() {
@@ -142,12 +170,13 @@ function logout() {
   authToken = '';
   localStorage.removeItem('bd_token');
   clearTimeout(reconnectTimer);
+  clearInterval(syncTimer);
   if (ws) ws.close();
   $('app-screen').classList.add('hidden');
   $('auth-screen').classList.remove('hidden');
 }
 
-async function loadInitialData() {
+async function loadInitialData(silent = false) {
   try {
     const [healthRes, filesRes, clipRes] = await Promise.all([
       fetch('/api/health').catch(() => null),
@@ -163,7 +192,7 @@ async function loadInitialData() {
     renderFiles(filesData.files || []);
     renderClipboard(clipData.entries || []);
   } catch {
-    // handled by apiFetch
+    if (!silent) showToast('Could not reach PC');
   }
 }
 
@@ -216,10 +245,47 @@ function connectWebSocket() {
   };
 }
 
+// 4-Digit Segmented PIN Input
+const pinDigits = Array.from(document.querySelectorAll('.pin-digit'));
+function getPinValue() {
+  return pinDigits.map((el) => el.value).join('');
+}
+
+pinDigits.forEach((input, idx) => {
+  input.addEventListener('input', (e) => {
+    const val = e.target.value.replace(/\D/g, '');
+    e.target.value = val.slice(0, 1);
+    if (e.target.value && idx < pinDigits.length - 1) {
+      pinDigits[idx + 1].focus();
+    }
+    if (getPinValue().length === 4) {
+      submitPinInput();
+    }
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Backspace' && !e.target.value && idx > 0) {
+      pinDigits[idx - 1].focus();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      submitPinInput();
+    }
+  });
+
+  input.addEventListener('paste', (e) => {
+    e.preventDefault();
+    const pasted = (e.clipboardData?.getData('text') || '').replace(/\D/g, '').slice(0, 4);
+    pasted.split('').forEach((ch, i) => {
+      if (pinDigits[i]) pinDigits[i].value = ch;
+    });
+    if (pasted.length === 4) submitPinInput();
+  });
+});
+
 // Pairing
 async function submitPair({ pin = '', qrSecret = '', trust = '' }) {
   $('btn-pair').disabled = true;
-  $('auth-status').textContent = trust ? 'Reconnecting trusted device...' : qrSecret ? 'Verifying QR code...' : 'Verifying PIN...';
+  $('auth-status').textContent = trust ? 'Reconnecting...' : qrSecret ? 'Connecting via QR...' : 'Checking PIN...';
 
   try {
     const res = await fetch('/api/auth/pair', {
@@ -233,7 +299,7 @@ async function submitPair({ pin = '', qrSecret = '', trust = '' }) {
         trustKey = '';
         localStorage.removeItem('bd_trust_key');
       }
-      $('auth-status').textContent = trust ? 'Enter PIN to reconnect.' : (data.error || 'Pairing failed');
+      $('auth-status').textContent = trust ? 'Enter PIN to reconnect.' : (data.error || 'Could not connect');
       $('btn-pair').disabled = false;
       return;
     }
@@ -245,7 +311,7 @@ async function submitPair({ pin = '', qrSecret = '', trust = '' }) {
       return;
     }
 
-    $('auth-status').textContent = 'Waiting for PC approval...';
+    $('auth-status').textContent = 'Check your PC screen and click Allow...';
     const poll = setInterval(async () => {
       try {
         const stRes = await fetch(`/api/auth/status?challengeId=${encodeURIComponent(data.challengeId)}`);
@@ -261,7 +327,7 @@ async function submitPair({ pin = '', qrSecret = '', trust = '' }) {
           showApp();
         } else if (stData.status === 'rejected') {
           clearInterval(poll);
-          $('auth-status').textContent = 'Connection blocked by PC.';
+          $('auth-status').textContent = 'Connection blocked on PC.';
           $('btn-pair').disabled = false;
         }
       } catch {
@@ -271,48 +337,58 @@ async function submitPair({ pin = '', qrSecret = '', trust = '' }) {
       }
     }, 1000);
   } catch {
-    $('auth-status').textContent = 'Network error.';
+    $('auth-status').textContent = 'Could not reach PC. Check Wi-Fi.';
     $('btn-pair').disabled = false;
   }
 }
 
 const submitPinInput = () => {
-  const pin = $('pin-input').value.trim();
+  const pin = getPinValue();
   if (pin.length !== 4) {
-    $('auth-status').textContent = 'Enter 4-digit PIN.';
+    $('auth-status').textContent = 'Enter all 4 digits.';
     return;
   }
   submitPair({ pin });
 };
 $('btn-pair').addEventListener('click', submitPinInput);
-$('pin-input').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    submitPinInput();
-  }
+
+$('btn-theme').addEventListener('click', () => {
+  currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  localStorage.setItem('bd_theme', currentTheme);
+  document.documentElement.setAttribute('data-theme', currentTheme);
 });
 
-$('btn-refresh').addEventListener('click', () => {
-  loadInitialData();
-  showToast('Refreshed');
+$('btn-refresh').addEventListener('click', async () => {
+  await loadInitialData();
+  showToast('Up to date');
 });
 
-// Filter pills & search
+// Filter pills & custom search clear
 document.querySelectorAll('.pill').forEach((pill) => {
   pill.addEventListener('click', () => {
     document.querySelectorAll('.pill').forEach((p) => p.classList.remove('active'));
     pill.classList.add('active');
     activeFilter = pill.dataset.filter;
-    renderFiles(filesCache);
+    renderFiles(filesCache, true);
   });
 });
 
 $('file-search').addEventListener('input', (e) => {
   searchQuery = e.target.value.trim().toLowerCase();
-  renderFiles(filesCache);
+  $('btn-clear-search').classList.toggle('hidden', !searchQuery);
+  renderFiles(filesCache, true);
+});
+$('btn-clear-search').addEventListener('click', () => {
+  $('file-search').value = '';
+  searchQuery = '';
+  $('btn-clear-search').classList.add('hidden');
+  renderFiles(filesCache, true);
 });
 
-function renderFiles(files) {
+function renderFiles(files, force = false) {
+  const sig = JSON.stringify(files);
+  if (!force && sig === lastFilesSig) return; // zero-jitter refresh
+  lastFilesSig = sig;
   filesCache = files;
   $('files-count').textContent = String(files.length);
   const list = $('files-list');
@@ -391,13 +467,13 @@ function renderFiles(files) {
       if (isNonNative && ffmpegAvailable) {
         const remuxBtn = document.createElement('button');
         remuxBtn.className = 'btn btn-primary btn-sm';
-        remuxBtn.textContent = 'Stream (Remux)';
+        remuxBtn.textContent = 'Play Video';
         remuxBtn.addEventListener('click', () => openVideoModal(file, true));
         actions.appendChild(remuxBtn);
       } else {
         const playBtn = document.createElement('button');
         playBtn.className = 'btn btn-primary btn-sm';
-        playBtn.textContent = 'Stream Video';
+        playBtn.textContent = 'Play Video';
         playBtn.addEventListener('click', () => openVideoModal(file, false));
         actions.appendChild(playBtn);
       }
@@ -412,7 +488,7 @@ function renderFiles(files) {
     } else if (!file.isDirectory && file.mimeType.startsWith('image/')) {
       const previewBtn = document.createElement('button');
       previewBtn.className = 'btn btn-primary btn-sm';
-      previewBtn.textContent = 'Preview';
+      previewBtn.textContent = 'View';
       previewBtn.addEventListener('click', () => openImageModal(file));
       actions.appendChild(previewBtn);
     }
@@ -434,7 +510,7 @@ function renderFiles(files) {
     moreBtn.textContent = `Show More (${filtered.length - visibleLimit} remaining)`;
     moreBtn.addEventListener('click', () => {
       visibleLimit += PAGE_SIZE;
-      renderFiles(filesCache);
+      renderFiles(filesCache, true);
     });
     list.appendChild(moreBtn);
   }
@@ -453,12 +529,12 @@ function updateBatchBar() {
 
 $('btn-select-all').addEventListener('click', () => {
   for (const f of filesCache) selectedIds.add(f.id);
-  renderFiles(filesCache);
+  renderFiles(filesCache, true);
 });
 
 $('btn-clear-sel').addEventListener('click', () => {
   selectedIds.clear();
-  renderFiles(filesCache);
+  renderFiles(filesCache, true);
 });
 
 $('btn-download-zip').addEventListener('click', () => {
@@ -515,7 +591,7 @@ async function startChunkedUpload(file) {
     cancelled: false,
     percent: 0,
     speedBps: 0,
-    status: 'Initializing...'
+    status: 'Starting...'
   };
   activeUploads.set(localId, state);
   renderUploads();
@@ -533,7 +609,7 @@ async function startChunkedUpload(file) {
       })
     });
     const initData = await initRes.json();
-    if (!initRes.ok) throw new Error(initData.error || 'Init failed');
+    if (!initRes.ok) throw new Error(initData.error || 'Could not start upload');
 
     state.uploadId = initData.uploadId;
     const chunkSize = initData.chunkSize;
@@ -547,7 +623,7 @@ async function startChunkedUpload(file) {
     }
 
     let cursor = 0;
-    const CONCURRENCY = Math.min(3, Math.max(1, pendingIndices.length));
+    const CONCURRENCY = Math.min(4, Math.max(1, pendingIndices.length));
 
     const worker = async () => {
       while (cursor < pendingIndices.length) {
@@ -573,12 +649,12 @@ async function startChunkedUpload(file) {
               method: 'PUT',
               body: blob
             });
-            if (!chunkRes.ok) throw new Error('Chunk failed');
+            if (!chunkRes.ok) throw new Error('Part failed');
             break;
           } catch (err) {
             attempt += 1;
             if (attempt >= 4) throw err;
-            state.status = `Retrying chunk (${attempt}/3)...`;
+            state.status = `Retrying (${attempt}/3)...`;
             renderUploads();
             await new Promise((r) => setTimeout(r, 600 * attempt));
           }
@@ -587,18 +663,20 @@ async function startChunkedUpload(file) {
         uploadedBytes = Math.min(file.size, uploadedBytes + (end - start));
         const elapsed = Math.max(0.1, (Date.now() - startedAt) / 1000);
         state.speedBps = uploadedBytes / elapsed;
-        state.percent = Math.round((uploadedBytes / file.size) * 100);
+        state.percent = file.size === 0 ? 100 : Math.round((uploadedBytes / file.size) * 100);
         state.status = `${state.percent}% · ${(state.speedBps / (1024 * 1024)).toFixed(1)} MB/s`;
         renderUploads();
       }
     };
 
-    await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
+    if (pendingIndices.length > 0) {
+      await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
+    }
     if (state.cancelled) return;
 
     const compRes = await apiFetch(`/api/upload/complete/${state.uploadId}`, { method: 'POST' });
-    if (!compRes.ok) throw new Error('Finalize failed');
-    state.status = 'Completed';
+    if (!compRes.ok) throw new Error('Could not finish upload');
+    state.status = 'Done';
     state.percent = 100;
     renderUploads();
     showToast(`Sent ${file.name}`);
@@ -693,6 +771,9 @@ function renderUploads() {
 
 // Clipboard
 function renderClipboard(entries) {
+  const sig = JSON.stringify(entries);
+  if (sig === lastClipSig) return; // zero-jitter refresh
+  lastClipSig = sig;
   const list = $('clip-list');
   list.textContent = '';
   for (const entry of entries) {
@@ -726,7 +807,7 @@ function renderClipboard(entries) {
     copyBtn.textContent = 'Copy';
     copyBtn.addEventListener('click', () => {
       copyTextFallback(entry.text);
-      showToast('Copied to clipboard');
+      showToast('Copied');
     });
     actions.appendChild(copyBtn);
 

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -16,9 +16,15 @@
           <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         <span class="titlebar-name">BeamDrop</span>
-        <span class="status-badge" id="lan-status-badge"><span class="status-dot" id="lan-status-dot"></span><span id="lan-status-text">LAN Ready</span></span>
+        <span class="status-badge" id="lan-status-badge">
+          <span class="status-dot" id="lan-status-dot"></span>
+          <span id="lan-status-text">Ready</span>
+        </span>
       </div>
       <div class="window-controls">
+        <button id="btn-open-help" class="win-btn" title="Quick Guide &amp; About" aria-label="Help and About">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </button>
         <button id="btn-open-settings" class="win-btn" title="Settings" aria-label="Settings">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </button>
@@ -38,19 +44,19 @@
       <!-- Left Sidebar -->
       <aside class="sidebar">
         <div class="card qr-card">
-          <img id="qr-img" class="qr-clickable" title="Click to expand QR Code" alt="Pairing QR Code" />
+          <img id="qr-img" class="qr-clickable" title="Click to expand QR Code" alt="Scan to connect" />
           <div class="url-row">
             <div class="url-pill" id="server-url">http://...</div>
-            <button id="btn-copy-url" class="btn-icon" title="Copy URL">
+            <button id="btn-copy-url" class="btn-icon" title="Copy Address">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
             </button>
           </div>
           <div id="mdns-pill" class="mdns-pill hidden"></div>
-          <button id="btn-copy-invite" class="btn btn-sm btn-full-w">Copy Instant Connect Link</button>
+          <button id="btn-copy-invite" class="btn btn-sm btn-full-w">Copy One-Tap Connect Link</button>
           <div class="pin-row">
             <span class="pin-label">PIN</span>
             <span class="pin-code" id="pin-code">----</span>
-            <button id="btn-regen-pin" class="btn-icon" title="Regenerate PIN">
+            <button id="btn-regen-pin" class="btn-icon" title="New PIN">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
             </button>
           </div>
@@ -58,20 +64,27 @@
 
         <div class="card controls-card">
           <div class="field-row">
-            <label class="field-label" for="iface-select">Network Adapter</label>
-            <button id="btn-refresh-net" class="btn-icon-xs" title="Refresh Network Adapters">
+            <span class="field-label">Wi-Fi / Network</span>
+            <button id="btn-refresh-net" class="btn-icon-xs" title="Refresh Networks">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
             </button>
           </div>
-          <select id="iface-select" class="select-input"></select>
+          <!-- 100% Custom Dropdown (no native OS select) -->
+          <div class="custom-select" id="iface-dropdown">
+            <button type="button" id="iface-trigger" class="custom-select-trigger">
+              <span id="iface-current" class="truncate">Detecting...</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div id="iface-menu" class="custom-select-menu hidden"></div>
+          </div>
 
           <label class="toggle-row" for="chk-approval">
-            <span>Require PC Approval</span>
+            <span>Ask before connecting</span>
             <input type="checkbox" id="chk-approval" class="switch" checked />
           </label>
 
           <div class="save-dir-box">
-            <span class="field-label">Save Folder (Phone to PC)</span>
+            <span class="field-label">Save Received Files To</span>
             <div class="save-dir-path" id="save-dir-path"></div>
             <div class="btn-row">
               <button id="btn-change-save" class="btn btn-sm">Change</button>
@@ -80,20 +93,20 @@
           </div>
 
           <div class="net-tools">
-            <button id="btn-fix-fw" class="btn btn-sm" title="Add Windows Firewall allow rule">Allow Firewall</button>
-            <button id="btn-open-hotspot" class="btn btn-sm" title="Open Windows Mobile Hotspot">Hotspot</button>
+            <button id="btn-fix-fw" class="btn btn-sm">Fix Firewall</button>
+            <button id="btn-open-hotspot" class="btn btn-sm">Hotspot</button>
           </div>
         </div>
 
         <div class="card sessions-card">
           <div class="card-header">
-            <span>Devices (<span id="session-count">0</span>)</span>
-            <button id="btn-revoke" class="btn-link danger">Revoke All</button>
+            <span>Connected (<span id="session-count">0</span>)</span>
+            <button id="btn-revoke" class="btn-link danger">Disconnect All</button>
           </div>
           <ul id="sessions-list" class="sessions-list"></ul>
           <div id="trusted-wrap" class="trusted-wrap hidden">
             <div class="card-header" style="margin-top:10px;">
-              <span>Trusted (<span id="trusted-count">0</span>)</span>
+              <span>Remembered (<span id="trusted-count">0</span>)</span>
             </div>
             <ul id="trusted-list" class="sessions-list"></ul>
           </div>
@@ -105,33 +118,39 @@
         <div id="approval-banner" class="approval-banner hidden"></div>
 
         <div id="drop-zone" class="drop-zone">
-          <div class="drop-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          </div>
-          <div class="drop-title">Drop videos, files, or folders to share</div>
-          <div class="drop-sub">Original quality · Direct LAN stream · 2GB+ ready</div>
-          <div class="drop-actions">
-            <button id="btn-pick-files" class="btn btn-primary">Add Files</button>
-            <button id="btn-pick-folder" class="btn">Add Folder</button>
+          <div class="drop-row">
+            <div class="drop-text">
+              <div class="drop-title">Drop files or folders anywhere to share</div>
+              <div class="drop-sub">Original quality · Up to 30 GB per file</div>
+            </div>
+            <div class="drop-actions">
+              <button id="btn-pick-files" class="btn btn-primary">Add Files</button>
+              <button id="btn-pick-folder" class="btn">Add Folder</button>
+            </div>
           </div>
         </div>
 
         <div class="tabs">
           <button class="tab active" data-tab="files">Shared Files (<span id="files-count">0</span>)</button>
           <button class="tab" data-tab="transfers">Transfers (<span id="transfers-count">0</span>)</button>
-          <button class="tab" data-tab="clipboard">Clipboard</button>
+          <button class="tab" data-tab="clipboard">Text &amp; Links</button>
         </div>
 
         <section id="tab-files" class="tab-panel active">
           <div class="toolbar">
-            <input id="file-search" type="search" class="search-input" placeholder="Filter by filename..." />
+            <div class="search-wrap">
+              <input id="file-search" type="text" class="search-input" placeholder="Search shared files..." />
+              <button id="btn-clear-search" class="search-clear hidden" title="Clear">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+              </button>
+            </div>
             <div class="filter-pills">
               <button class="pill active" data-filter="all">All</button>
               <button class="pill" data-filter="video">Videos</button>
               <button class="pill" data-filter="image">Images</button>
               <button class="pill" data-filter="folder">Folders</button>
             </div>
-            <button id="btn-clear-files" class="btn btn-sm danger-btn" title="Clear Shared List">Clear All</button>
+            <button id="btn-clear-files" class="btn btn-sm danger-btn">Clear All</button>
           </div>
           <div id="files-list" class="item-list"></div>
         </section>
@@ -142,10 +161,10 @@
 
         <section id="tab-clipboard" class="tab-panel">
           <div class="clip-composer">
-            <textarea id="clip-input" placeholder="Paste text or URL to push to phone (Enter to send)..."></textarea>
+            <textarea id="clip-input" placeholder="Paste text or link to send (press Enter to send)..."></textarea>
             <div class="clip-btns">
               <button id="btn-send-clip" class="btn btn-primary">Send</button>
-              <button id="btn-paste-send" class="btn btn-sm" title="Send current OS clipboard">Paste &amp; Send</button>
+              <button id="btn-paste-send" class="btn btn-sm">Paste &amp; Send</button>
             </div>
           </div>
           <div id="clip-list" class="item-list"></div>
@@ -158,8 +177,8 @@
   <div id="qr-modal" class="modal hidden">
     <div class="modal-card qr-modal-card">
       <div class="modal-header">
-        <strong>Scan to Connect</strong>
-        <button id="btn-close-qr" class="btn btn-sm">Close (Esc)</button>
+        <strong>Scan with Phone Camera</strong>
+        <button id="btn-close-qr" class="btn btn-sm">Close</button>
       </div>
       <img id="qr-large-img" alt="Fullscreen QR Code" />
       <div id="qr-large-url" class="url-pill"></div>
@@ -170,34 +189,79 @@
   <div id="settings-modal" class="modal hidden">
     <div class="modal-card">
       <div class="modal-header">
-        <strong>BeamDrop Settings</strong>
-        <button id="btn-close-settings" class="btn btn-sm">Close (Esc)</button>
+        <strong>Settings</strong>
+        <button id="btn-close-settings" class="btn btn-sm">Close</button>
       </div>
       <div class="settings-grid">
+        <div class="setting-row">
+          <span>Appearance</span>
+          <div class="segmented" id="theme-seg">
+            <button type="button" class="seg-btn active" data-theme-val="dark">Dark</button>
+            <button type="button" class="seg-btn" data-theme-val="light">Light</button>
+          </div>
+        </div>
+        <div class="setting-row">
+          <span>Connection Port</span>
+          <div class="stepper">
+            <button type="button" id="btn-port-dec" class="stepper-btn">-</button>
+            <input id="set-port" type="text" inputmode="numeric" maxlength="5" class="stepper-input" />
+            <button type="button" id="btn-port-inc" class="stepper-btn">+</button>
+          </div>
+        </div>
         <label class="setting-row">
-          <span>Server Port</span>
-          <input id="set-port" type="number" min="1024" max="65535" class="num-input" />
-        </label>
-        <label class="setting-row">
-          <span>mDNS Discovery (beamdrop.local)</span>
+          <span>Easy Web Name (beamdrop.local)</span>
           <input id="set-mdns" type="checkbox" class="switch" />
         </label>
         <label class="setting-row">
-          <span>Local HTTPS Mode (PWA &amp; Clipboard)</span>
+          <span>Encrypted Connection (HTTPS)</span>
           <input id="set-https" type="checkbox" class="switch" />
         </label>
         <label class="setting-row">
-          <span>Launch at Login</span>
+          <span>Start When PC Turns On</span>
           <input id="set-login" type="checkbox" class="switch" />
         </label>
         <label class="setting-row">
-          <span>FFmpeg Zero-Reencode Remux (MKV)</span>
+          <span>Play MKV Videos in Browser</span>
           <input id="set-remux" type="checkbox" class="switch" />
         </label>
       </div>
       <div class="modal-footer">
-        <button id="btn-copy-diag" class="btn btn-sm">Copy Diagnostics</button>
+        <button id="btn-copy-diag" class="btn btn-sm">Copy Support Info</button>
         <button id="btn-save-settings" class="btn btn-primary btn-sm">Save &amp; Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Guide & About Modal -->
+  <div id="help-modal" class="modal hidden">
+    <div class="modal-card help-modal-card">
+      <div class="modal-header">
+        <strong>Quick Guide &amp; About BeamDrop</strong>
+        <button id="btn-close-help" class="btn btn-sm">Close</button>
+      </div>
+      <div class="guide-list">
+        <div class="guide-item">
+          <strong>College / Office PC has a strict firewall?</strong>
+          <p>Click <b>Fix Firewall</b> in the sidebar, or turn on Windows <b>Hotspot</b> and connect your phone directly to your PC's Wi-Fi.</p>
+        </div>
+        <div class="guide-item">
+          <strong>Phone and PC are on different Wi-Fi networks?</strong>
+          <p>Both devices must be on the same Wi-Fi, or connect your phone to your PC's Mobile Hotspot.</p>
+        </div>
+        <div class="guide-item">
+          <strong>Video won't play in phone browser (MKV / AVI)?</strong>
+          <p>Tap <b>Open in VLC</b> on your phone or tap <b>Download</b> to save it at full Wi-Fi speed.</p>
+        </div>
+      </div>
+      <div class="about-box">
+        <div><strong>BeamDrop v1.3.0</strong> · GNU GPLv3</div>
+        <div class="about-sub">Built by <b>Atharva Patil | P4inz</b> (<code>p4inz-code</code>)</div>
+        <div class="about-links">
+          <a href="https://github.com/p4inz-code/beamdrop" target="_blank" rel="noopener noreferrer" class="btn btn-sm">GitHub</a>
+          <a href="https://discord.gg/8UKt8s5FbW" target="_blank" rel="noopener noreferrer" class="btn btn-sm">Discord</a>
+          <a href="https://github.com/p4inz-code/beamdrop/blob/main/PRIVACY.md" target="_blank" rel="noopener noreferrer" class="btn btn-sm">Privacy</a>
+          <a href="https://github.com/p4inz-code/beamdrop/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" class="btn btn-sm">License</a>
+        </div>
       </div>
     </div>
   </div>

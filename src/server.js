@@ -83,7 +83,12 @@ function readJsonBody(req, maxBytes = 64 * 1024) {
     req.on('end', () => {
       try {
         const raw = Buffer.concat(chunks).toString('utf8');
-        resolve(raw ? JSON.parse(raw) : {});
+        if (!raw.trim()) return resolve({});
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          return reject(Object.assign(new Error('Expected JSON object'), { statusCode: 400 }));
+        }
+        resolve(parsed);
       } catch {
         reject(Object.assign(new Error('Invalid JSON'), { statusCode: 400 }));
       }
@@ -123,12 +128,17 @@ function checkFfmpegAvailable() {
 function computeFileSha256(filePath) {
   return new Promise((resolve, reject) => {
     const hash = crypto.createHash('sha256');
-    const s = fs.createReadStream(toLongPath(filePath), { highWaterMark: 512 * 1024 });
+    const s = fs.createReadStream(toLongPath(filePath), { highWaterMark: 1024 * 1024 });
     s.on('data', (d) => hash.update(d));
     s.on('end', () => resolve(hash.digest('hex')));
     s.on('error', reject);
   });
 }
+
+const MAX_CONCURRENT_UPLOADS = 16;
+const MAX_PENDING_CHALLENGES = 50;
+const CHALLENGE_TTL_MS = 5 * 60 * 1000;
+const MAX_ACTIVE_SESSIONS = 32;
 
 class BeamDropServer extends EventEmitter {
   constructor(options = {}) {
@@ -138,11 +148,11 @@ class BeamDropServer extends EventEmitter {
     this.saveDir = options.saveDir;
     this.mobileDir = options.mobileDir || path.join(__dirname, 'mobile');
     this.trustedStorePath = options.trustedStorePath || null;
-    this.tlsOptions = options.tlsOptions || null;
+    this.tlsOptions = options.tlsOptions ? { minVersion: 'TLSv1.2', ...options.tlsOptions } : null;
     this.logger = options.logger || null;
     this.ffmpegRemux = Boolean(options.ffmpegRemux);
     this.ffmpegAvailable = false;
-    this.maxFileSize = options.maxFileSize ?? 10 * 1024 * 1024 * 1024; // 10 GB
+    this.maxFileSize = options.maxFileSize ?? 30 * 1024 * 1024 * 1024; // 30 GB
     this.requireApproval = options.requireApproval ?? true;
 
     this.pin = options.pin || generatePin();
@@ -157,7 +167,9 @@ class BeamDropServer extends EventEmitter {
     this.challenges = new Map();
     this.trustedDevices = new Map(); // id -> { id, deviceName, trustKey, createdAt }
     this.sharedItems = new Map();
+    this.sharedByPath = new Map(); // filePath -> id (O(1) dedup)
     this.uploads = new Map();
+    this.reservedPaths = new Set();
     this.clipboard = [];
     this.wsClients = new Set();
 
@@ -293,6 +305,10 @@ class BeamDropServer extends EventEmitter {
     if (!ch || ch.status !== 'pending') return false;
 
     if (allow) {
+      if (this.sessions.size >= MAX_ACTIVE_SESSIONS) {
+        const oldestKey = this.sessions.keys().next().value;
+        if (oldestKey) this.sessions.delete(oldestKey);
+      }
       const token = generateToken();
       const sessionId = crypto.randomUUID();
       ch.status = 'approved';
@@ -313,6 +329,7 @@ class BeamDropServer extends EventEmitter {
       this.sessions.set(token, {
         id: sessionId,
         token,
+        uaHash: ch.uaHash || '',
         deviceName: ch.deviceName,
         ip: ch.ip,
         createdAt: Date.now()
@@ -341,15 +358,9 @@ class BeamDropServer extends EventEmitter {
         const stat = await fsp.stat(resolved);
         const name = path.basename(resolved);
 
-        let existing = null;
-        for (const item of this.sharedItems.values()) {
-          if (item.filePath === resolved) {
-            existing = item;
-            break;
-          }
-        }
-        if (existing) {
-          added.push(existing);
+        const existingId = this.sharedByPath.get(resolved);
+        if (existingId && this.sharedItems.has(existingId)) {
+          added.push(this.sharedItems.get(existingId));
           continue;
         }
 
@@ -365,6 +376,7 @@ class BeamDropServer extends EventEmitter {
           addedAt: Date.now()
         };
         this.sharedItems.set(id, item);
+        this.sharedByPath.set(resolved, id);
         added.push(item);
       } catch {
         // skip inaccessible paths
@@ -378,7 +390,10 @@ class BeamDropServer extends EventEmitter {
   }
 
   removeSharedItem(id) {
-    if (this.sharedItems.delete(id)) {
+    const item = this.sharedItems.get(id);
+    if (item) {
+      this.sharedItems.delete(id);
+      this.sharedByPath.delete(item.filePath);
       this.broadcast('files:updated', this.getPublicFileList());
       this.emit('files:changed', this.getPublicFileList());
       return true;
@@ -388,8 +403,27 @@ class BeamDropServer extends EventEmitter {
 
   clearSharedItems() {
     this.sharedItems.clear();
+    this.sharedByPath.clear();
     this.broadcast('files:updated', []);
     this.emit('files:changed', []);
+  }
+
+  async pruneMissingSharedItems() {
+    let changed = false;
+    for (const [id, item] of this.sharedItems.entries()) {
+      try {
+        await fsp.access(toLongPath(item.filePath));
+      } catch {
+        this.sharedItems.delete(id);
+        this.sharedByPath.delete(item.filePath);
+        changed = true;
+      }
+    }
+    if (changed) {
+      this.broadcast('files:updated', this.getPublicFileList());
+      this.emit('files:changed', this.getPublicFileList());
+    }
+    return changed;
   }
 
   getPublicFileList() {
@@ -445,10 +479,20 @@ class BeamDropServer extends EventEmitter {
     return null;
   }
 
+  getUaHash(req) {
+    const ua = req.headers['user-agent'] || '';
+    return crypto.createHash('sha256').update(ua).digest('hex').slice(0, 16);
+  }
+
   authenticateRequest(req) {
     const token = this.getTokenFromRequest(req);
     if (!token) return null;
-    return this.sessions.get(token) || null;
+    const session = this.sessions.get(token);
+    if (!session) return null;
+    if (session.uaHash && req.headers['user-agent'] && session.uaHash !== this.getUaHash(req)) {
+      return null;
+    }
+    return session;
   }
 
   validateSameOrigin(req) {
@@ -480,19 +524,30 @@ class BeamDropServer extends EventEmitter {
 
     while (true) {
       const target = resolveSafePath(this.saveDir, candidate);
-      try {
-        await fsp.access(target);
-        candidate = `${stem} (${counter})${ext}`;
-        counter += 1;
-      } catch {
-        return { filename: candidate, fullPath: target };
+      if (!this.reservedPaths.has(target)) {
+        try {
+          await fsp.access(target);
+        } catch {
+          // Re-check after await in case another concurrent request reserved it
+          if (!this.reservedPaths.has(target)) {
+            this.reservedPaths.add(target);
+            return { filename: candidate, fullPath: target };
+          }
+        }
       }
+      candidate = `${stem} (${counter})${ext}`;
+      counter += 1;
     }
   }
 
   async handleRequest(req, res) {
     req.socket?.setNoDelay?.(true);
-    const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(req.url || '/', 'http://127.0.0.1');
+    } catch {
+      return sendJson(res, 400, { error: 'Malformed request URL' });
+    }
     const pathname = parsedUrl.pathname;
     const remoteIp = req.socket.remoteAddress || 'unknown';
 
@@ -532,12 +587,10 @@ class BeamDropServer extends EventEmitter {
         const ch = this.challenges.get(challengeId);
         if (!ch) return sendJson(res, 404, { error: 'Challenge not found' });
         if (ch.status === 'approved') {
-          return sendJson(
-            res,
-            200,
-            { status: 'approved', token: ch.token, trustKey: ch.trustKey || null },
-            { 'Set-Cookie': `bd_token=${encodeURIComponent(ch.token)}; HttpOnly; SameSite=Strict; Path=/` }
-          );
+          const payload = { status: 'approved', token: ch.token, trustKey: ch.trustKey || null };
+          const cookie = `bd_token=${encodeURIComponent(ch.token)}; HttpOnly; SameSite=Strict; Path=/`;
+          this.challenges.delete(challengeId); // one-time pickup
+          return sendJson(res, 200, payload, { 'Set-Cookie': cookie });
         }
         return sendJson(res, 200, { status: ch.status });
       }
@@ -626,7 +679,8 @@ class BeamDropServer extends EventEmitter {
       res.writeHead(200, {
         'Content-Type': contentType,
         'Content-Length': content.length,
-        'Cache-Control': 'no-cache'
+        'Cache-Control': 'no-cache',
+        'Content-Security-Policy': "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self'; script-src 'self'; connect-src 'self' ws: wss:;"
       });
       res.end(content);
     } catch {
@@ -658,7 +712,7 @@ class BeamDropServer extends EventEmitter {
           this.rateLimiter.recordSuccess(remoteIp);
           const token = generateToken();
           const sessionId = crypto.randomUUID();
-          this.sessions.set(token, { id: sessionId, token, deviceName: td.deviceName || deviceName, ip: remoteIp, createdAt: Date.now() });
+          this.sessions.set(token, { id: sessionId, token, uaHash: this.getUaHash(req), deviceName: td.deviceName || deviceName, ip: remoteIp, createdAt: Date.now() });
           this.emit('sessions:changed', this.getActiveSessions());
           return sendJson(
             res,
@@ -687,7 +741,7 @@ class BeamDropServer extends EventEmitter {
     if (!this.requireApproval) {
       const token = generateToken();
       const sessionId = crypto.randomUUID();
-      this.sessions.set(token, { id: sessionId, token, deviceName, ip: remoteIp, createdAt: Date.now() });
+      this.sessions.set(token, { id: sessionId, token, uaHash: this.getUaHash(req), deviceName, ip: remoteIp, createdAt: Date.now() });
       this.emit('sessions:changed', this.getActiveSessions());
       return sendJson(
         res,
@@ -697,11 +751,21 @@ class BeamDropServer extends EventEmitter {
       );
     }
 
+    // Prune expired challenges & cap pending challenges
+    const now = Date.now();
+    for (const [cid, c] of this.challenges.entries()) {
+      if (now - c.createdAt > CHALLENGE_TTL_MS) this.challenges.delete(cid);
+    }
+    if (this.challenges.size >= MAX_PENDING_CHALLENGES) {
+      return sendJson(res, 429, { error: 'Too many pending pairing requests' });
+    }
+
     const challengeId = crypto.randomUUID();
     const challenge = {
       id: challengeId,
       deviceName,
       ip: remoteIp,
+      uaHash: this.getUaHash(req),
       status: 'pending',
       token: null,
       createdAt: Date.now()
@@ -790,6 +854,19 @@ class BeamDropServer extends EventEmitter {
     const rangeHeader = req.headers.range;
     const trackDownload = mode === 'download' && totalSize >= 1024 * 1024; // track >=1MB downloads cleanly
 
+    if (totalSize === 0) {
+      if (rangeHeader) {
+        res.writeHead(416, { 'Content-Range': 'bytes */0' });
+        return res.end();
+      }
+      const headers = { 'Content-Type': item.mimeType, 'Content-Length': 0, 'Accept-Ranges': 'bytes' };
+      if (mode === 'download') {
+        headers['Content-Disposition'] = `attachment; filename*=UTF-8''${encodeURIComponent(item.name)}`;
+      }
+      res.writeHead(200, headers);
+      return res.end();
+    }
+
     if (mode === 'download' && !rangeHeader) {
       res.writeHead(200, {
         'Content-Type': item.mimeType,
@@ -797,7 +874,7 @@ class BeamDropServer extends EventEmitter {
         'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(item.name)}`,
         'Accept-Ranges': 'bytes'
       });
-      const stream = fs.createReadStream(item.filePath, { highWaterMark: 512 * 1024 });
+      const stream = fs.createReadStream(item.filePath, { highWaterMark: 1024 * 1024 });
       return this.pipeWithTracking(stream, res, req, {
         filename: item.name,
         deviceName: session.deviceName,
@@ -839,7 +916,7 @@ class BeamDropServer extends EventEmitter {
       }
 
       res.writeHead(206, headers);
-      const stream = fs.createReadStream(item.filePath, { start, end, highWaterMark: 512 * 1024 });
+      const stream = fs.createReadStream(item.filePath, { start, end, highWaterMark: 1024 * 1024 });
       return this.pipeWithTracking(stream, res, req, {
         filename: item.name,
         deviceName: session.deviceName,
@@ -868,6 +945,12 @@ class BeamDropServer extends EventEmitter {
     if (!this.ffmpegAvailable) {
       return sendJson(res, 501, { error: 'FFmpeg not available on PC PATH' });
     }
+    try {
+      const st = await fsp.stat(toLongPath(item.filePath));
+      if (!st.isFile()) return sendJson(res, 404, { error: 'File not found' });
+    } catch {
+      return sendJson(res, 404, { error: 'File no longer exists on disk' });
+    }
 
     res.writeHead(200, {
       'Content-Type': 'video/mp4',
@@ -876,13 +959,13 @@ class BeamDropServer extends EventEmitter {
 
     const ff = spawn('ffmpeg', [
       '-v', 'error',
-      '-i', item.filePath,
+      '-i', toLongPath(item.filePath),
       '-c:v', 'copy',
       '-c:a', 'aac',
       '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
       '-f', 'mp4',
       'pipe:1'
-    ], { stdio: ['ignore', 'pipe', 'pipe'] });
+    ], { stdio: ['ignore', 'pipe', 'ignore'] });
 
     ff.stdout.pipe(res);
     ff.on('error', () => {
@@ -894,14 +977,16 @@ class BeamDropServer extends EventEmitter {
   }
 
   async handleBatchZip(req, res, ids) {
-    const items = ids.map((id) => this.sharedItems.get(id)).filter(Boolean);
+    const uniqueIds = Array.from(new Set(ids)).slice(0, 500);
+    const items = uniqueIds.map((id) => this.sharedItems.get(id)).filter(Boolean);
     if (items.length === 0) {
       return sendJson(res, 404, { error: 'No valid files selected' });
     }
     return this.streamArchive(req, res, items, `BeamDrop-Batch-${Date.now()}.zip`);
   }
 
-  async appendDirectorySafe(archive, dirPath, zipPrefix) {
+  async appendDirectorySafe(archive, dirPath, zipPrefix, depth = 0) {
+    if (depth > 32) return; // guard against deep/cyclic directory structures
     let entries;
     try {
       entries = await fsp.readdir(toLongPath(dirPath), { withFileTypes: true });
@@ -915,7 +1000,7 @@ class BeamDropServer extends EventEmitter {
         if (lst.isSymbolicLink()) continue; // skip symlinks/junctions
         const entryZipPath = path.posix.join(zipPrefix, sanitizeFilename(entry.name));
         if (lst.isDirectory()) {
-          await this.appendDirectorySafe(archive, full, entryZipPath);
+          await this.appendDirectorySafe(archive, full, entryZipPath, depth + 1);
         } else if (lst.isFile()) {
           archive.file(toLongPath(full), { name: entryZipPath });
         }
@@ -923,6 +1008,21 @@ class BeamDropServer extends EventEmitter {
         // skip unreadable entries
       }
     }
+  }
+
+  uniqueZipEntryName(rawName, usedNames) {
+    const clean = sanitizeFilename(rawName);
+    if (!usedNames.has(clean)) {
+      usedNames.add(clean);
+      return clean;
+    }
+    const ext = path.extname(clean);
+    const stem = path.basename(clean, ext);
+    let idx = 1;
+    while (usedNames.has(`${stem} (${idx})${ext}`)) idx += 1;
+    const unique = `${stem} (${idx})${ext}`;
+    usedNames.add(unique);
+    return unique;
   }
 
   async streamArchive(req, res, items, zipName) {
@@ -949,14 +1049,16 @@ class BeamDropServer extends EventEmitter {
     });
 
     archive.pipe(res);
+    const usedZipNames = new Set();
     for (const item of items) {
       try {
-        const lst = await fsp.lstat(item.filePath);
+        const lst = await fsp.lstat(toLongPath(item.filePath));
         if (lst.isSymbolicLink()) continue;
+        const entryName = this.uniqueZipEntryName(item.name, usedZipNames);
         if (lst.isDirectory()) {
-          await this.appendDirectorySafe(archive, item.filePath, sanitizeFilename(item.name));
+          await this.appendDirectorySafe(archive, item.filePath, entryName, 0);
         } else if (lst.isFile()) {
-          archive.file(item.filePath, { name: sanitizeFilename(item.name) });
+          archive.file(toLongPath(item.filePath), { name: entryName });
         }
       } catch {
         // skip missing items
@@ -976,15 +1078,17 @@ class BeamDropServer extends EventEmitter {
   }
 
   async handleUploadInit(req, res, session) {
+    if (this.uploads.size >= MAX_CONCURRENT_UPLOADS) {
+      return sendJson(res, 429, { error: 'Too many concurrent uploads' });
+    }
     const body = await readJsonBody(req, 16 * 1024);
-    const totalSize = Number(body.totalSize);
+    if (typeof body.totalSize !== 'number' || !Number.isFinite(body.totalSize) || body.totalSize < 0 || body.totalSize > this.maxFileSize) {
+      return sendJson(res, 400, { error: `Invalid file size (max ${Math.round(this.maxFileSize / (1024 ** 3))} GB)` });
+    }
+    const totalSize = body.totalSize;
     const requestedChunk = Number(body.chunkSize) || 8 * 1024 * 1024;
     const chunkSize = Math.min(Math.max(requestedChunk, 64 * 1024), 16 * 1024 * 1024);
     const fingerprint = typeof body.fingerprint === 'string' ? body.fingerprint.slice(0, 128) : '';
-
-    if (!Number.isFinite(totalSize) || totalSize < 0 || totalSize > this.maxFileSize) {
-      return sendJson(res, 400, { error: `Invalid file size (max ${Math.round(this.maxFileSize / (1024 ** 3))} GB)` });
-    }
 
     // Resume existing upload if fingerprint matches an active partial upload
     if (fingerprint) {
@@ -1033,8 +1137,13 @@ class BeamDropServer extends EventEmitter {
       writing: Promise.resolve()
     };
 
-    this.uploads.set(uploadId, upload);
-    this.emit('transfer:update', this.serializeUpload(upload));
+    try {
+      this.uploads.set(uploadId, upload);
+      this.emit('transfer:update', this.serializeUpload(upload));
+    } catch (err) {
+      this.reservedPaths.delete(dest.fullPath);
+      throw err;
+    }
 
     return sendJson(res, 200, {
       uploadId,
@@ -1061,18 +1170,25 @@ class BeamDropServer extends EventEmitter {
     }
 
     const buf = await new Promise((resolve, reject) => {
-      const parts = [];
+      const exactAlloc = Number.isFinite(contentLength) && contentLength === expectedLen;
+      const directBuf = exactAlloc ? Buffer.allocUnsafe(expectedLen) : null;
+      const parts = exactAlloc ? null : [];
       let len = 0;
+
       req.on('data', (d) => {
-        len += d.length;
-        if (len > expectedLen) {
+        if (len + d.length > expectedLen) {
           req.destroy();
           reject(Object.assign(new Error('Chunk overflow'), { statusCode: 413 }));
           return;
         }
-        parts.push(d);
+        if (directBuf) {
+          d.copy(directBuf, len);
+        } else {
+          parts.push(d);
+        }
+        len += d.length;
       });
-      req.on('end', () => resolve(Buffer.concat(parts)));
+      req.on('end', () => resolve(directBuf ? directBuf.subarray(0, len) : Buffer.concat(parts)));
       req.on('error', reject);
     });
 
@@ -1134,6 +1250,7 @@ class BeamDropServer extends EventEmitter {
       const actualSha256 = await computeFileSha256(upload.tempPath);
       if (!timingSafeEqualStr(actualSha256, expectedSha256)) {
         this.uploads.delete(uploadId);
+    this.reservedPaths.delete(upload.finalPath);
         await fsp.rm(upload.tempPath, { force: true }).catch(() => {});
         this.logger?.warn('Upload', `SHA-256 mismatch for ${uploadId}`);
         return sendJson(res, 422, { error: 'SHA-256 checksum mismatch; file discarded' });
@@ -1155,6 +1272,7 @@ class BeamDropServer extends EventEmitter {
       }
     }
     this.uploads.delete(uploadId);
+    this.reservedPaths.delete(upload.finalPath);
 
     const added = await this.addSharedPaths([upload.finalPath], 'phone');
     const summary = {
@@ -1179,6 +1297,7 @@ class BeamDropServer extends EventEmitter {
     if (!upload) return sendJson(res, 404, { error: 'Upload session not found' });
 
     this.uploads.delete(uploadId);
+    this.reservedPaths.delete(upload.finalPath);
     try {
       await upload.writing;
       await upload.fh.close();
@@ -1226,6 +1345,7 @@ class BeamDropServer extends EventEmitter {
     this.httpServer.requestTimeout = 0;
     this.httpServer.keepAliveTimeout = 65_000;
     this.httpServer.headersTimeout = 66_000;
+    this.httpServer.maxRequestsPerSocket = 0;
 
     this.httpServer.on('clientError', (_err, socket) => {
       if (socket.writable) {
@@ -1235,7 +1355,13 @@ class BeamDropServer extends EventEmitter {
 
     this.wss = new WebSocketServer({ noServer: true });
     this.httpServer.on('upgrade', (req, socket, head) => {
-      const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      let url;
+      try {
+        url = new URL(req.url || '/', 'http://127.0.0.1');
+      } catch {
+        socket.destroy();
+        return;
+      }
       if (url.pathname !== '/ws') {
         socket.destroy();
         return;

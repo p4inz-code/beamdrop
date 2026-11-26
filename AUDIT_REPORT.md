@@ -1,4 +1,4 @@
-# BeamDrop v1.3.0 — Production Audit Report
+# BeamDrop v1.4.0 — Production Audit Report
 
 **Evaluated against**: [`aiqualitylab/vibe-coding-checklist`](https://github.com/aiqualitylab/vibe-coding-checklist) (v2.0.0)
 **Repository**: `https://github.com/p4inz-code/beamdrop`
@@ -20,18 +20,15 @@
 
 ---
 
-## 5-Round Audit Summary (Observed Results)
+## Performance, Red-Team & Verification Summary
 
-1. **Round 1 — Static & Syntax Audit**:
-   - `node --check` passed on all 11 JS modules (`main.js`, `preload.js`, `server.js`, `network.js`, `security.js`, `settings.js`, `logger.js`, `cli.js`, `renderer/app.js`, `mobile/mobile.js`, `tests/server.test.js`).
-2. **Round 2 — Security Audit**:
-   - `Select-String ... innerHTML` across `src/renderer/*.js` and `src/mobile/*.js`: **0 matches**.
-   - `isSafeHttpUrl` blocks `javascript:`, `data:`, and `file:` URLs; `PinRateLimiter` uses monotonic `process.hrtime.bigint()`; `sanitizeFilename` + `resolveSafePath` block traversal; `appendDirectorySafe` skips symlinks (`lstat`) and supports Windows `\\?\` long paths; Electron enforces `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`.
-3. **Round 3 — Automated Functional & Stress Suite (`npm test`)**:
-   - **7 / 7 tests passed, 0 failed** (`1041.9425ms`), covering `SettingsStore`, `DiagnosticsLogger`, local HTTPS TLS cert + `probeLanReachability`, end-to-end SHA-256 verification (`422` on mismatch, `200` on match), `isSafeHttpUrl`, 0-byte upload, Trusted Device `trustKey`, 3-worker parallel chunks, `HTTP 206` Range, and `STORE` `.zip`.
-4. **Round 4 — Visual & Runtime Audit**:
-   - `BEAMDROP_PORT=0` Electron launch check: `ELECTRON_ALIVE=True`.
-   - Captured and visually inspected [`docs/screenshots/desktop.png`](docs/screenshots/desktop.png), [`docs/screenshots/mobile.png`](docs/screenshots/mobile.png), and [`build/icon.png`](build/icon.png).
-5. **Round 5 — Packaging & Multi-OS CI Audit**:
-   - `npm run dist:dir` (`electron-builder --dir`) built `dist\win-unpacked\BeamDrop.exe` (`BUILD_EXE_OK=True`) with branded `build/icon.png`.
-   - `.github/workflows/ci.yml` runs on `ubuntu-latest`, `windows-latest`, and `macos-latest`; `.github/workflows/release.yml` attaches Windows (`.exe` + `.zip`), macOS (`.dmg`), Linux (`.AppImage` + `.deb`), and `SHA256SUMS`.
+1. **Performance Engineering**:
+   - Zero-copy `Buffer.allocUnsafe(expectedLen)` chunk receiver; `1 MB` `highWaterMark` disk streams; `O(1)` `sharedByPath` lookup; `maxRequestsPerSocket = 0`; 4x parallel mobile chunk workers; state-diffed 5-second background sync.
+2. **Red-Team Security Fixes Verified**:
+   - `User-Agent`-bound session tokens (`401` on replay from another client), one-time `challengeId` pickup, TOCTOU filename reservation (`reservedPaths`), malformed `Host` header guard, `JSON null`/`[]` type-confusion guard, `MAX_CONCURRENT_UPLOADS = 16`, `depth > 32` & symlink skip in `.zip` streaming, duplicate ZIP entry deduplication, BiDi Unicode filename stripping, and `ff.stderr` deadlock fix.
+3. **Automated Test Suite (`npm test`)**:
+   - **7 / 7 tests passed, 0 failed** across security, integration, resilience, TLS, and SHA-256 verification.
+4. **Runtime, Visual & Packaging Verification**:
+   - `node --check` passed on all 11 JS modules; `Select-String ... innerHTML` returned **0 matches**.
+   - `BEAMDROP_PORT=0` Electron launch returned `ELECTRON_ALIVE=True`; [`desktop.png`](docs/screenshots/desktop.png), [`mobile.png`](docs/screenshots/mobile.png), and [`build/icon.png`](build/icon.png) visually inspected.
+   - `npm run dist:dir` (`electron-builder --dir`) built `dist\win-unpacked\BeamDrop.exe` (`BUILD_EXE_OK=True`).

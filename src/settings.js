@@ -8,6 +8,7 @@ const os = require('os');
 const DEFAULT_SETTINGS = {
   port: 5050,
   saveDir: path.join(os.homedir(), 'Downloads', 'BeamDrop'),
+  theme: 'dark',
   requireApproval: true,
   useHttps: false,
   enableMdns: true,
@@ -18,26 +19,28 @@ const DEFAULT_SETTINGS = {
 };
 
 function sanitizeSettings(raw = {}, fallbackSaveDir = DEFAULT_SETTINGS.saveDir) {
-  const portNum = Number(raw.port);
+  const r = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const portNum = Number(r.port);
   const port = Number.isInteger(portNum) && portNum >= 1024 && portNum <= 65535 ? portNum : 5050;
 
-  const concNum = Number(raw.maxConcurrentTransfers);
+  const concNum = Number(r.maxConcurrentTransfers);
   const maxConcurrentTransfers = Number.isInteger(concNum) && concNum >= 1 && concNum <= 3 ? concNum : 2;
 
-  const saveDir = typeof raw.saveDir === 'string' && raw.saveDir.trim()
-    ? path.resolve(raw.saveDir.trim())
-    : fallbackSaveDir;
+  const rawDir = typeof r.saveDir === 'string' ? r.saveDir.replace(/[\x00-\x1f\x7f]/g, '').trim() : '';
+  const saveDir = rawDir ? path.resolve(rawDir) : fallbackSaveDir;
+  const theme = r.theme === 'light' ? 'light' : 'dark';
 
   return {
     port,
     saveDir,
-    requireApproval: typeof raw.requireApproval === 'boolean' ? raw.requireApproval : true,
-    useHttps: Boolean(raw.useHttps),
-    enableMdns: typeof raw.enableMdns === 'boolean' ? raw.enableMdns : true,
-    launchAtLogin: Boolean(raw.launchAtLogin),
+    theme,
+    requireApproval: typeof r.requireApproval === 'boolean' ? r.requireApproval : true,
+    useHttps: Boolean(r.useHttps),
+    enableMdns: typeof r.enableMdns === 'boolean' ? r.enableMdns : true,
+    launchAtLogin: Boolean(r.launchAtLogin),
     maxConcurrentTransfers,
-    ffmpegRemux: Boolean(raw.ffmpegRemux),
-    verifySha256: Boolean(raw.verifySha256)
+    ffmpegRemux: Boolean(r.ffmpegRemux),
+    verifySha256: Boolean(r.verifySha256)
   };
 }
 

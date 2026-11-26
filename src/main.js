@@ -38,6 +38,10 @@ let isQuitting = false;
 let powerSaveId = null;
 let adapterWatchTimer = null;
 let lastAdapterSig = '';
+let lastReachable = true;
+let probeTick = 0;
+let cachedQrUrl = '';
+let cachedQrDataUrl = '';
 const activeTransferIds = new Set();
 
 function getAppIcon() {
@@ -65,10 +69,12 @@ async function buildAppState() {
   const url = `${proto}://${activeAddr}:${server.port}`;
   const mdnsUrl = settings.enableMdns ? `${proto}://beamdrop.local:${server.port}` : null;
   const qrUrl = `${url}/?q=${encodeURIComponent(server.qrSecret)}`;
-  const [qrDataUrl, lanReachable] = await Promise.all([
-    server.getQrDataUrl(qrUrl),
-    probeLanReachability(activeAddr, server.port, settings.useHttps)
-  ]);
+  if (qrUrl !== cachedQrUrl) {
+    cachedQrUrl = qrUrl;
+    cachedQrDataUrl = await server.getQrDataUrl(qrUrl);
+  }
+  const lanReachable = await probeLanReachability(activeAddr, server.port, settings.useHttps);
+  const qrDataUrl = cachedQrDataUrl;
 
   return {
     url,
@@ -102,13 +108,13 @@ function sendToRenderer(channel, payload) {
 
 async function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1080,
-    height: 740,
-    minWidth: 840,
-    minHeight: 580,
+    width: 1120,
+    height: 750,
+    minWidth: 880,
+    minHeight: 600,
     frame: false,
     icon: getAppIcon(),
-    backgroundColor: '#090d14',
+    backgroundColor: '#09090b',
     title: 'BeamDrop',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -234,7 +240,9 @@ function registerIpc() {
   ipcMain.handle('app:get-state', () => buildAppState());
 
   ipcMain.handle('app:select-interface', async (_e, addr) => {
-    selectedAddress = addr;
+    if (typeof addr === 'string' && addr.length <= 64) {
+      selectedAddress = addr;
+    }
     const state = await buildAppState();
     sendToRenderer('event:state', state);
     return state;
@@ -290,7 +298,14 @@ function registerIpc() {
   });
 
   ipcMain.handle('app:show-in-folder', (_e, filePath) => {
-    if (typeof filePath === 'string' && filePath) shell.showItemInFolder(filePath);
+    if (typeof filePath !== 'string' || !filePath) return;
+    const resolved = path.resolve(filePath);
+    const saveBase = path.resolve(server.saveDir);
+    const inSaveDir = resolved.startsWith(saveBase + path.sep);
+    const isShared = Array.from(server.sharedItems.values()).some((i) => i.filePath === resolved);
+    if (inSaveDir || isShared) {
+      shell.showItemInFolder(resolved);
+    }
   });
 
   ipcMain.handle('app:paste-send-clipboard', () => {
@@ -368,7 +383,10 @@ function registerIpc() {
 
   ipcMain.handle('app:open-save-dir', () => shell.openPath(server.saveDir));
   ipcMain.handle('app:add-paths', async (_e, paths) => {
-    if (Array.isArray(paths)) await server.addSharedPaths(paths, 'pc');
+    if (Array.isArray(paths)) {
+      const safePaths = paths.filter((p) => typeof p === 'string' && p.length > 0).slice(0, 500);
+      await server.addSharedPaths(safePaths, 'pc');
+    }
     return server.getPublicFileList();
   });
   ipcMain.handle('app:remove-shared', (_e, id) => server.removeSharedItem(id));
@@ -382,6 +400,10 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (err) => {
   logger?.error('Main', `Unhandled rejection: ${err}`);
   console.error('[BeamDrop Unhandled Rejection]', err);
+});
+
+app.on('web-contents-created', (_e, contents) => {
+  contents.on('will-attach-webview', (ev) => ev.preventDefault());
 });
 
 app.whenReady().then(async () => {
@@ -398,14 +420,25 @@ app.whenReady().then(async () => {
   createTray();
   await createWindow();
 
-  // Lightweight 5s network adapter watcher (auto-updates QR/URL when Hotspot or Wi-Fi changes)
+  // 5-second shared-file & adapter sync (only pushes IPC when state actually changes)
   lastAdapterSig = getNetworkInterfaces().interfaces.map((i) => `${i.name}:${i.address}`).join('|');
   adapterWatchTimer = setInterval(async () => {
+    probeTick += 1;
+    const pruned = await server.pruneMissingSharedItems();
     const sig = getNetworkInterfaces().interfaces.map((i) => `${i.name}:${i.address}`).join('|');
-    if (sig !== lastAdapterSig) {
+    const adapterChanged = sig !== lastAdapterSig;
+    if (adapterChanged) {
       lastAdapterSig = sig;
       logger.info('Network', 'Adapter configuration changed');
-      sendToRenderer('event:state', await buildAppState());
+    }
+    if (adapterChanged || probeTick % 6 === 0) {
+      const addr = selectedAddress || getNetworkInterfaces().recommended.address;
+      const reachable = await probeLanReachability(addr, server.port, settingsStore.get().useHttps);
+      const reachChanged = reachable !== lastReachable;
+      lastReachable = reachable;
+      if (adapterChanged || reachChanged || pruned) {
+        sendToRenderer('event:state', await buildAppState());
+      }
     }
   }, 5000);
   adapterWatchTimer.unref();

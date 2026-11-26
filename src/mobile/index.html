@@ -1,38 +1,50 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self'; script-src 'self'; connect-src 'self' ws: wss:;" />
-  <meta name="theme-color" content="#090d14" />
+  <meta name="theme-color" content="#09090b" />
   <link rel="manifest" href="/manifest.json" />
   <title>BeamDrop</title>
   <link rel="stylesheet" href="/mobile.css" />
 </head>
 <body>
-  <!-- Auth Screen -->
+  <!-- Auth Screen (Pro Minimal Connect) -->
   <div id="auth-screen" class="screen">
     <div class="auth-card">
-      <div class="brand-mark">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
+      <div class="auth-head">
+        <div class="brand-mark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="auth-titles">
+          <h1>BeamDrop</h1>
+          <p class="muted">Enter the 4-digit PIN shown on your PC</p>
+        </div>
       </div>
-      <h1>BeamDrop</h1>
-      <p class="muted">Enter the 4-digit PIN shown on your PC</p>
-      <input id="pin-input" type="tel" inputmode="numeric" maxlength="4" placeholder="0000" autocomplete="off" />
-      <button id="btn-pair" class="btn btn-primary btn-full">Connect to PC</button>
+
+      <div class="pin-boxes" id="pin-boxes">
+        <input class="pin-digit" type="tel" inputmode="numeric" maxlength="1" autocomplete="off" aria-label="Digit 1" />
+        <input class="pin-digit" type="tel" inputmode="numeric" maxlength="1" autocomplete="off" aria-label="Digit 2" />
+        <input class="pin-digit" type="tel" inputmode="numeric" maxlength="1" autocomplete="off" aria-label="Digit 3" />
+        <input class="pin-digit" type="tel" inputmode="numeric" maxlength="1" autocomplete="off" aria-label="Digit 4" />
+      </div>
+
+      <button id="btn-pair" class="btn btn-primary btn-full">Connect</button>
       <div id="auth-status" class="status-msg"></div>
-      <div class="auth-foot">Same Wi-Fi or Hotspot · Zero Cloud</div>
+      <div class="auth-foot">Same Wi-Fi or PC Hotspot · Private local transfer</div>
     </div>
   </div>
 
   <!-- Main App Screen -->
   <div id="app-screen" class="screen hidden">
     <div id="webview-banner" class="webview-banner hidden">
-      <span>In-app browser detected. Open in Safari or Chrome for full-speed 2GB downloads.</span>
+      <span>In-app browser detected. Open in Safari or Chrome for full-speed downloads.</span>
       <button id="btn-dismiss-wv" class="btn-link">Dismiss</button>
     </div>
+
     <header class="topbar">
       <div class="topbar-left">
         <span id="conn-dot" class="dot"></span>
@@ -40,17 +52,23 @@
         <span id="conn-label" class="conn-label">Connected</span>
       </div>
       <div class="topbar-actions">
-        <button id="btn-refresh" class="btn-icon" title="Refresh Files" aria-label="Refresh">
+        <button id="btn-theme" class="btn-icon" title="Switch Theme" aria-label="Switch Theme">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+        </button>
+        <button id="btn-refresh" class="btn-icon" title="Refresh" aria-label="Refresh">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
         </button>
         <button id="btn-disconnect" class="btn btn-sm">Disconnect</button>
       </div>
     </header>
 
-    <!-- Tab 1: PC Files -->
+    <!-- Tab 1: Files from PC -->
     <section id="tab-files" class="tab-panel active">
-      <div class="toolbar">
-        <input id="file-search" type="search" class="search-input" placeholder="Search PC files..." />
+      <div class="search-wrap">
+        <input id="file-search" type="text" class="search-input" placeholder="Search files..." />
+        <button id="btn-clear-search" class="search-clear hidden" aria-label="Clear search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
       </div>
       <div class="filter-pills">
         <button class="pill active" data-filter="all">All</button>
@@ -64,15 +82,13 @@
     <!-- Tab 2: Send to PC -->
     <section id="tab-send" class="tab-panel">
       <input id="file-picker" type="file" multiple class="hidden" />
-      <button id="btn-send-files" class="send-hero">
-        <div class="send-hero-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-          </svg>
+      <div class="send-panel-head">
+        <div>
+          <div class="send-hero-title">Send Files to PC</div>
+          <div class="send-hero-sub">Videos, photos, or documents up to 30 GB</div>
         </div>
-        <div class="send-hero-title">Tap to Send Videos or Files</div>
-        <div class="send-hero-sub">Original quality · 3x parallel chunks · Auto-resume</div>
-      </button>
+        <button id="btn-send-files" class="btn btn-primary">Choose Files</button>
+      </div>
       <div id="uploads-section" class="section-inline hidden">
         <div class="section-head">
           <h2 class="section-title">Transfer Queue</h2>
@@ -82,7 +98,7 @@
       </div>
     </section>
 
-    <!-- Tab 3: Clipboard -->
+    <!-- Tab 3: Text & Links -->
     <section id="tab-clipboard" class="tab-panel">
       <div class="clip-box">
         <textarea id="clip-input" placeholder="Paste text or link to send to PC..."></textarea>
@@ -113,7 +129,7 @@
       </button>
       <button class="nav-btn" data-tab="clipboard">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-        <span>Clipboard</span>
+        <span>Text &amp; Links</span>
       </button>
     </nav>
   </div>

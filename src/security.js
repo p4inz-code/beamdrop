@@ -12,9 +12,9 @@ function sanitizeFilename(rawName) {
 
   // Extract basename across both POSIX and Windows separators
   const base = rawName.split(/[/\\]/).pop() || '';
-  // Remove null bytes, control chars, and invalid Windows filename chars
+  // Remove null bytes, control chars, Unicode BiDi overrides, and invalid Windows filename chars
   let clean = base
-    .replace(/[\x00-\x1f\x7f<>:"|?*]/g, '_')
+    .replace(/[\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069<>:"|?*]/g, '_')
     .replace(/^\.+/, '')
     .trim();
 
