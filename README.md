@@ -1,35 +1,53 @@
-# BeamDrop
+<h1 align="center">BeamDrop</h1>
+<p align="center"><b>Your videos and files, straight across the room.</b><br>A free, open-source, zero-cloud wireless file &amp; 2GB+ video transfer app for Windows PC and Mobile (iOS &amp; Android).</p>
 
-**Zero-cloud, high-throughput local Wi-Fi file & 2GB+ video transfer app for Windows PC and Mobile (iOS & Android).**
+<p align="center">
+  <a href="https://github.com/p4inz-code/beamdrop/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/p4inz-code/beamdrop/ci.yml?style=flat-square&labelColor=0f1520&color=10b981&label=ci" alt="CI Status"></a>
+  <a href="https://github.com/p4inz-code/beamdrop/stargazers"><img src="https://img.shields.io/github/stars/p4inz-code/beamdrop?style=flat-square&labelColor=0f1520&color=38bdf8&label=stars" alt="Stars"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/p4inz-code/beamdrop?style=flat-square&labelColor=0f1520&color=f43f5e&label=license" alt="GPLv3 License"></a>
+  <a href="https://discord.gg/8UKt8s5FbW"><img src="https://img.shields.io/badge/discord-join-5865F2?style=flat-square&labelColor=0f1520" alt="Discord"></a>
+</p>
 
-Built by **[Atharva Patil | P4inz (`p4inz-code`)](https://github.com/p4inz-code)** — *Open-source software, creative tools & experimental technology.*
+---
+
+You have a 1.5 GB video on your PC and want it on your phone right now—without uploading it to Google Drive, emailing yourself links, hunting for a USB cable, or installing sketchy ad-filled apps on your phone.
+
+**BeamDrop** turns your PC into a hardened local transfer hub over your Wi-Fi or Windows Mobile Hotspot. Scan a QR code with your phone camera, tap **Allow** on your PC, and stream or download original-quality 2GB+ videos at full LAN speed. No account, no cloud, no telemetry.
+
+> **Status: v1.0.0, tested and ready for daily 1GB–2GB+ video transfers on Windows.**
+> See [Known Issues](docs/KNOWN_ISSUES.md) for current network/codec caveats and the [Roadmap](ROADMAP.md) for `v1.2.0` (mDNS, local HTTPS, and cross-platform installers).
 
 ---
 
 ## Screenshots
 
-| Desktop App (Custom Frameless UI) | Mobile Web / PWA (Thumb-First UI) |
-| :---: | :---: |
-| ![BeamDrop Desktop](docs/screenshots/desktop.png) | ![BeamDrop Mobile](docs/screenshots/mobile.png) |
+<table>
+<tr>
+<td width="68%" align="center">
+<sub>Desktop App (Custom Frameless UI · Electron)</sub><br><br>
+<img src="docs/screenshots/desktop.png" alt="BeamDrop Desktop App showing QR pairing, 4-digit PIN, network adapter selector, connected devices, and shared files" width="100%">
+</td>
+<td width="32%" align="center">
+<sub>Mobile Web / PWA (Thumb-First UI)</sub><br><br>
+<img src="docs/screenshots/mobile.png" alt="BeamDrop Mobile Web UI showing bottom navigation, file filters, video streaming, image preview, and ZIP download" width="100%">
+</td>
+</tr>
+</table>
 
 ---
 
-## Why BeamDrop?
+## What BeamDrop Does
 
-- **Zero-Install Phone Client**: Works directly in Safari or Chrome on iOS and Android (installable as a PWA)—no app store downloads required.
-- **2GB+ Video & File Engine**:
-  - **PC → Phone**: Full `HTTP 206 Partial Content` byte-range streaming to scrub and play 1GB–2GB+ MP4/MOV/WebM videos directly, or download at full LAN speed.
-  - **Phone → PC**: **3x parallel 8 MB chunked uploads** with automatic retry, pause/resume, fingerprint-based resume across disconnects, Wake Lock screen protection, and `statfs` disk-space pre-checks.
-  - **Zero-CPU Streaming ZIP**: Download folders or multi-file batches as `.zip` using `STORE` mode (`level: 0`) so your PC stays cool and transfers at full Wi-Fi bandwidth.
-- **Versatile & Hardened Pairing**:
-  - **QR Code (`Level Q` error correction)** with a rotating 128-bit `qrSecret` for 1-scan pairing.
-  - **Instant Connect Link** one-click copy button on PC.
-  - **4-Digit PIN** with per-IP rate limiting & lockout (`PinRateLimiter`) + constant-time verification (`crypto.timingSafeEqual`).
-  - **Explicit PC `[Allow / Block]` Approval** + individual device **Kick** and **Revoke All**.
-- **Security-First Architecture**:
-  - Electron runs with `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, custom frameless window chrome, and strict CSP.
-  - Strict path sanitization (`sanitizeFilename`, `resolveSafePath`) prevents `../` traversal and Windows reserved-name (`CON`, `NUL`, etc.) exploits.
-  - Zero `innerHTML` usage on untrusted data (XSS-safe DOM rendering) + `Origin` CSRF validation + authenticated WebSockets with 25s heartbeat.
+- **2GB+ Chunked Resumable Uploads (Phone → PC)**: Splits large files into 8 MB slices and uploads with **3x parallel workers**, automatic chunk retry, fingerprint-based resume across disconnects, Wake Lock screen protection, and `statfs` disk-space pre-checks. Memory usage stays flat (~40 MB).
+- **Instant Video Streaming (`HTTP 206 Partial Content`)**: Scrub and play 1GB–2GB+ MP4, MOV, and WebM videos directly in your phone's browser without waiting for a full download—or tap **Download** for raw full-speed transfer.
+- **Zero-CPU Streaming `.ZIP`**: Select multiple files or drop an entire folder on PC and download it as a single `.zip` streamed on the fly in `STORE` mode (`level: 0`) so your PC stays cool.
+- **Versatile, Hardened Pairing**:
+  - **QR Code (`Level Q`)** with a rotating 128-bit `qrSecret` for 1-scan pairing.
+  - **Instant Connect Link** one-click copy button.
+  - **4-Digit PIN** with per-IP rate limiting (`PinRateLimiter`: 5 attempts $\rightarrow$ 120s lockout) and constant-time verification (`crypto.timingSafeEqual`).
+  - **Explicit PC `[Allow / Block]` Prompt** + individual device **Kick** and **Revoke All**.
+- **Two-Way Live Clipboard**: Push links and snippets between PC and Phone over authenticated WebSockets (with HTTP legacy copy fallback for non-HTTPS LAN origins).
+- **Custom Frameless Window**: Zero native OS title bar or OS form controls, System Tray minimize, and strict Electron sandboxing (`contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`).
 
 ---
 
@@ -40,12 +58,12 @@ flowchart LR
     PC["Electron Desktop App (Windows)"] -->|Serves Mobile PWA + API| Phone["Phone Browser / PWA"]
     Phone -->|3x Parallel 8MB Chunks + Resume| Disk["Save Folder (.beamdrop_tmp -> Final)"]
     PC -->|HTTP 206 Range / STORE .ZIP| Phone
-    PC <-->|Authenticated WebSocket + Heartbeat| Phone
+    PC <-->|Authenticated WebSocket + 25s Heartbeat| Phone
 ```
 
 ---
 
-## Quick Start (For Anyone)
+## Quick Start
 
 ### Prerequisites
 - **Node.js v20+** (tested on Node.js v24)
@@ -60,11 +78,11 @@ npm start
 ```
 
 ### Transfer Videos in 3 Steps
-1. **Drop** your videos, files, or folders into the BeamDrop PC window.
-2. **Scan the QR Code** with your phone camera (or click **Copy Instant Connect Link** / enter the URL + 4-digit PIN).
+1. **Drop** videos, files, or folders into the BeamDrop PC window.
+2. **Scan the QR Code** on your phone (or use **Copy Instant Connect Link** / enter the URL + 4-digit PIN).
 3. Click **Allow** on the PC banner, then tap **Stream Video**, **Preview**, **Download**, or **Download .ZIP** on your phone.
 
-> **Windows Firewall Tip**: On first launch, allow **Private networks** in Windows Defender Firewall so your phone can reach the local server. If you enable a Mobile Hotspot after launching, click the **Refresh Network Adapters** button in the sidebar.
+> **Windows Firewall Note**: On first launch, allow **Private networks** in Windows Defender Firewall so your phone can reach port `5050`. If you turn on a Mobile Hotspot after launching, click the **Refresh Network Adapters** button in the sidebar.
 
 ---
 
@@ -74,32 +92,30 @@ npm start
 npm test
 ```
 
-The automated test suite (`node --test`) verifies:
-- Path traversal & Windows reserved filename sanitization
-- PIN brute-force rate limiting & lockout
-- QR secret pairing, PC approval flow, and individual device kick
-- 3-worker parallel out-of-order chunked uploads with SHA-256 integrity
-- Fingerprint-based upload resume
-- `HTTP 206` byte-range video streaming & `416` bounds handling
-- Streaming `.zip` generation (`PK\x03\x04` & `PK\x05\x06` verification)
+The automated `node --test` suite verifies:
+- Path traversal, null-byte, and Windows reserved-name sanitization (`sanitizeFilename`, `resolveSafePath`)
+- PIN brute-force rate limiting & lockout (`429 Retry-After`)
+- QR secret pairing, PC approval flow, and individual device `Kick`
+- 3-worker parallel out-of-order chunked uploads with byte-for-byte **SHA-256** integrity
+- Fingerprint-based upload resume (`resumed: true`)
+- `HTTP 206` byte-range streaming & `416` bounds handling
+- Streaming `.zip` generation (`PK\x03\x04`, `PK\x05\x06`, intact `STORE` payload)
 - Cross-origin CSRF blocking (`403`) & `EADDRINUSE` port fallback
 
 ---
 
-## Roadmap (Next Version)
+## Project Docs
 
-- **v1.1 — Discovery & Packaging**:
-  - mDNS (`beamdrop.local`) zero-IP discovery on LAN
-  - Signed Windows `.exe` / NSIS installer via `electron-builder`
-  - Optional local HTTPS (self-signed cert) for native `navigator.clipboard` & PWA install prompts
-- **v2.0 — Pro Media & Multi-Peer**:
-  - Hardware-accelerated optional video transcode profile (for HEVC/MKV compatibility on older phones)
-  - Multi-phone room broadcast & folder two-way sync
+- [Roadmap](ROADMAP.md) — Upcoming `v1.2.0` & `v2.0.0` milestones
+- [Known Issues](docs/KNOWN_ISSUES.md) — Current platform & network caveats
+- [Security Policy](SECURITY.md) — Threat model & vulnerability reporting
+- [Contributing](CONTRIBUTING.md) — Dev setup & engineering standards
 
 ---
 
 ## Copyright & License
 
 **Copyright (C) 2026 Atharva Patil (`p4inz-code`). All rights reserved.**
+Built by **[Atharva Patil | P4inz](https://github.com/p4inz-code)** — *Open-source software, creative tools & experimental technology.*
 
-This program is free software: you can redistribute it and/or modify it under the terms of the **GNU General Public License v3.0 (GPL-3.0-or-later)** as published by the Free Software Foundation. See [LICENSE](LICENSE) for the full license text.
+Licensed under the **GNU General Public License v3.0 (GPL-3.0-or-later)**. See [LICENSE](LICENSE) and [NOTICE](NOTICE) for details.

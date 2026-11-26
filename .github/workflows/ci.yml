@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: |
+          node --check src/main.js
+          node --check src/preload.js
+          node --check src/server.js
+          node --check src/network.js
+          node --check src/security.js
+          node --check src/cli.js
+          node --check src/renderer/app.js
+          node --check src/mobile/mobile.js
+          node --check tests/server.test.js
+      - run: npm test
