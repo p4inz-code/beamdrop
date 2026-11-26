@@ -1,3 +1,6 @@
+// BeamDrop — Copyright (C) 2026 Atharva Patil (p4inz-code) | https://github.com/p4inz-code/beamdrop
+// Licensed under GNU GPL-3.0-or-later. See LICENSE and NOTICE for details.
+
 const { app, BrowserWindow, Tray, Menu, ipcMain, dialog, shell, nativeImage } = require('electron');
 const path = require('path');
 const os = require('os');

@@ -12,7 +12,11 @@
     "type": "git",
     "url": "https://github.com/p4inz-code/beamdrop.git"
   },
-  "author": "p4inz-code",
+  "homepage": "https://github.com/p4inz-code/beamdrop#readme",
+  "bugs": {
+    "url": "https://github.com/p4inz-code/beamdrop/issues"
+  },
+  "author": "Atharva Patil <p4inz-code> (https://github.com/p4inz-code)",
   "keywords": [
     "file-sharing",
     "lan",

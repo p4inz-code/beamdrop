@@ -1,3 +1,6 @@
+// BeamDrop — Copyright (C) 2026 Atharva Patil (p4inz-code) | https://github.com/p4inz-code/beamdrop
+// Licensed under GNU GPL-3.0-or-later. See LICENSE and NOTICE for details.
+
 const http = require('http');
 const fs = require('fs');
 const fsp = require('fs/promises');
