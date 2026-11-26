@@ -360,12 +360,19 @@ $('btn-revoke').addEventListener('click', () => {
 });
 $('btn-pick-files').addEventListener('click', () => window.beamdrop.pickFiles());
 $('btn-pick-folder').addEventListener('click', () => window.beamdrop.pickFolder());
-$('btn-send-clip').addEventListener('click', async () => {
+const sendClipboardText = async () => {
   const val = $('clip-input').value.trim();
   if (!val) return;
   await window.beamdrop.sendClipboard(val);
   $('clip-input').value = '';
   showToast('Sent to phone');
+};
+$('btn-send-clip').addEventListener('click', sendClipboardText);
+$('clip-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendClipboardText();
+  }
 });
 
 // Drag & Drop

@@ -242,13 +242,20 @@ async function submitPair({ pin = '', qrSecret = '' }) {
   }
 }
 
-$('btn-pair').addEventListener('click', () => {
+const submitPinInput = () => {
   const pin = $('pin-input').value.trim();
   if (pin.length !== 4) {
     $('auth-status').textContent = 'Enter 4-digit PIN.';
     return;
   }
   submitPair({ pin });
+};
+$('btn-pair').addEventListener('click', submitPinInput);
+$('pin-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    submitPinInput();
+  }
 });
 
 $('btn-refresh').addEventListener('click', () => {
@@ -645,7 +652,7 @@ function renderClipboard(entries) {
   }
 }
 
-$('btn-send-clip').addEventListener('click', async () => {
+const sendMobileClip = async () => {
   const text = $('clip-input').value.trim();
   if (!text) return;
   await apiFetch('/api/clipboard', {
@@ -655,6 +662,13 @@ $('btn-send-clip').addEventListener('click', async () => {
   });
   $('clip-input').value = '';
   showToast('Sent to PC');
+};
+$('btn-send-clip').addEventListener('click', sendMobileClip);
+$('clip-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMobileClip();
+  }
 });
 
 // Bottom Navigation Tabs
