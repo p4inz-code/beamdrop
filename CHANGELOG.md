@@ -2,6 +2,19 @@
 
 All notable changes to **BeamDrop** are documented in this file.
 
+## [1.4.2] - 2026-11-27
+
+### Interface & In-App Viewers
+- **4-View Desktop Navigation Rail**: Rebuilt the PC app around a `210px` left rail (`Share`, `Connect`, `Transfers`, `Text & Links`), `1240×820` default window with remembered bounds, Gallery Grid & Compact List toggle, batch remove, and a 3-step onboarding empty state.
+- **Mobile 16:9 Media-First Cards**: Redesigned phone file cards with 16:9 image/video preview banners, format pills, multi-select checkboxes, and a helpful empty state with a 1-tap `Send Files to PC` button.
+- **Universal In-App Media Viewer (PC & Mobile)**: Added in-app playback and reading for **Video** (MP4/MOV/WebM + optional FFmpeg remux), **Images**, **Audio** (MP3/WAV/FLAC/M4A/OGG), and **Text & Code** (`.txt`, `.md`, `.json`, `.log`, `.csv`, etc., range-capped at 512 KB).
+- **64 GB Per-File Limit**: Increased maximum file transfer size from 30 GB to **64 GB**.
+
+### Auto-Updater & Verification
+- **Built-In GitHub Releases Auto-Updater (`src/updater.js`)**: Checks `p4inz-code/beamdrop` releases on startup (toggleable in Settings) or manually, verifies downloads against `SHA256SUMS-*.txt`, shows live `%` and `MB/s` progress, and lets you **Install Now** or **Install When I Quit**.
+- **Playwright E2E UI Suite (`tests/e2e.test.js`)**: Automated end-to-end browser test covering PIN pairing, 16:9 media cards, audio/text/image modals, search/filter, and `Enter`-to-send clipboard.
+- **Loopback Guard on Preview Token**: Restricted `localPreviewToken` strictly to `127.0.0.1` `GET /api/files/:id/stream` requests.
+
 ## [1.4.0] - 2026-11-27
 
 ### Performance & Engineering

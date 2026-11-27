@@ -621,8 +621,8 @@ test('v1.3.0: SettingsStore, DiagnosticsLogger, HTTPS TLS, and Upload SHA-256 ve
   assert.ok(dupZipBuf.includes(Buffer.from('clip.mp4', 'utf8')));
   assert.ok(dupZipBuf.includes(Buffer.from('clip (1).mp4', 'utf8')));
 
-  // 8. UA-bound session token rejection + 30GB limit + pruneMissingSharedItems
-  assert.equal(httpServer.maxFileSize, 30 * 1024 * 1024 * 1024);
+  // 8. UA-bound session token rejection + 64GB limit + pruneMissingSharedItems
+  assert.equal(httpServer.maxFileSize, 64 * 1024 * 1024 * 1024);
 
   const stolenUaRes = await fetch(`${base}/api/files`, {
     headers: { Authorization: `Bearer ${pair.token}`, 'User-Agent': 'EvilAttackerCurl/1.0' }
@@ -651,4 +651,49 @@ test('v1.3.0: SettingsStore, DiagnosticsLogger, HTTPS TLS, and Upload SHA-256 ve
   const svgStream = await fetch(`${base}/api/files/${svgItem.id}/stream`, { headers });
   assert.equal(svgStream.status, 200);
   assert.equal(svgStream.headers.get('content-security-policy'), "sandbox; default-src 'none';");
+});
+
+test('AppUpdater semver comparison, asset selection, SHA-256 parsing, and SettingsStore windowBounds', async () => {
+  const { isNewerVersion, selectAssetForPlatform, parseSha256Sums } = require('../src/updater');
+  const { sanitizeSettings } = require('../src/settings');
+
+  // Semver checks (latest, current)
+  assert.equal(isNewerVersion('1.4.1', '1.4.0'), true);
+  assert.equal(isNewerVersion('v2.0.0', '1.4.0'), true);
+  assert.equal(isNewerVersion('1.4.0', '1.4.0'), false);
+  assert.equal(isNewerVersion('1.3.9', '1.4.0'), false);
+
+  // Asset selection
+  const assets = [
+    { name: 'BeamDrop-Setup-1.5.0.exe', browser_download_url: 'https://example.com/setup.exe', size: 100 },
+    { name: 'BeamDrop-Portable-1.5.0.exe', browser_download_url: 'https://example.com/port.exe', size: 90 },
+    { name: 'BeamDrop-1.5.0.dmg', browser_download_url: 'https://example.com/app.dmg', size: 110 },
+    { name: 'BeamDrop-1.5.0.AppImage', browser_download_url: 'https://example.com/app.AppImage', size: 95 }
+  ];
+  assert.equal(selectAssetForPlatform(assets, 'win32').installer?.name, 'BeamDrop-Setup-1.5.0.exe');
+  assert.equal(selectAssetForPlatform(assets, 'darwin').installer?.name, 'BeamDrop-1.5.0.dmg');
+  assert.equal(selectAssetForPlatform(assets, 'linux').installer?.name, 'BeamDrop-1.5.0.AppImage');
+
+  // SHA256SUMS parsing
+  const shaTxt = [
+    'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  BeamDrop-Setup-1.5.0.exe',
+    'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa *BeamDrop-1.5.0.dmg'
+  ].join('\n');
+  assert.equal(
+    parseSha256Sums(shaTxt, 'BeamDrop-Setup-1.5.0.exe'),
+    'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+  );
+  assert.equal(
+    parseSha256Sums(shaTxt, 'BeamDrop-1.5.0.dmg'),
+    'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  );
+
+  // windowBounds & checkUpdatesOnStartup sanitization
+  const s1 = sanitizeSettings({ checkUpdatesOnStartup: false, windowBounds: { width: 1400, height: 900, x: 50, y: 80 } }, 'C:\\Save');
+  assert.equal(s1.checkUpdatesOnStartup, false);
+  assert.deepEqual(s1.windowBounds, { width: 1400, height: 900, x: 50, y: 80 });
+
+  const s2 = sanitizeSettings({ windowBounds: { width: 100, height: 100 } }, 'C:\\Save');
+  assert.equal(s2.windowBounds.width, 1240);
+  assert.equal(s2.windowBounds.height, 820);
 });

@@ -85,7 +85,7 @@
       <div class="send-panel-head">
         <div>
           <div class="send-hero-title">Send Files to PC</div>
-          <div class="send-hero-sub">Videos, photos, or documents up to 30 GB</div>
+          <div class="send-hero-sub">Videos, photos, audio, or documents up to 64 GB</div>
         </div>
         <button id="btn-send-files" class="btn btn-primary">Choose Files</button>
       </div>
@@ -153,6 +153,28 @@
         <button id="btn-close-image" class="btn btn-sm">Close</button>
       </div>
       <img id="image-preview" alt="Preview" />
+    </div>
+  </div>
+
+  <!-- Audio Player Modal -->
+  <div id="audio-modal" class="modal hidden">
+    <div class="modal-inner">
+      <div class="modal-header">
+        <span id="audio-title" class="truncate"></span>
+        <button id="btn-close-audio" class="btn btn-sm">Close</button>
+      </div>
+      <audio id="audio-player" controls></audio>
+    </div>
+  </div>
+
+  <!-- Text & Code Reader Modal -->
+  <div id="text-modal" class="modal hidden">
+    <div class="modal-inner">
+      <div class="modal-header">
+        <span id="text-title" class="truncate"></span>
+        <button id="btn-close-text" class="btn btn-sm">Close</button>
+      </div>
+      <pre id="text-preview" class="text-preview"></pre>
     </div>
   </div>
 

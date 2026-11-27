@@ -152,7 +152,7 @@ class BeamDropServer extends EventEmitter {
     this.logger = options.logger || null;
     this.ffmpegRemux = Boolean(options.ffmpegRemux);
     this.ffmpegAvailable = false;
-    this.maxFileSize = options.maxFileSize ?? 30 * 1024 * 1024 * 1024; // 30 GB
+    this.maxFileSize = options.maxFileSize ?? 64 * 1024 * 1024 * 1024; // 64 GB
     this.requireApproval = options.requireApproval ?? true;
 
     this.pin = options.pin || generatePin();
@@ -164,6 +164,7 @@ class BeamDropServer extends EventEmitter {
     });
 
     this.sessions = new Map();
+    this.localPreviewToken = generateToken();
     this.challenges = new Map();
     this.trustedDevices = new Map(); // id -> { id, deviceName, trustKey, createdAt }
     this.sharedItems = new Map();
@@ -487,6 +488,15 @@ class BeamDropServer extends EventEmitter {
   authenticateRequest(req) {
     const token = this.getTokenFromRequest(req);
     if (!token) return null;
+    if (timingSafeEqualStr(token, this.localPreviewToken)) {
+      const ip = req.socket?.remoteAddress || '';
+      const isLoopback = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+      const reqUrl = (req.url || '').split('?')[0];
+      if (!isLoopback || req.method !== 'GET' || !/^\/api\/files\/[^/]+\/stream$/.test(reqUrl)) {
+        return null;
+      }
+      return { id: 'local-pc', token, deviceName: 'PC Preview', ip: '127.0.0.1' };
+    }
     const session = this.sessions.get(token);
     if (!session) return null;
     if (session.uaHash && req.headers['user-agent'] && session.uaHash !== this.getUaHash(req)) {

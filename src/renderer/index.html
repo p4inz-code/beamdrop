@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self';" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: http://127.0.0.1:* https://127.0.0.1:*; media-src 'self' http://127.0.0.1:* https://127.0.0.1:*; connect-src 'self' http://127.0.0.1:* https://127.0.0.1:*; style-src 'self'; script-src 'self';" />
   <title>BeamDrop</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -12,8 +12,8 @@
     <!-- Custom Frameless Titlebar -->
     <header class="titlebar">
       <div class="titlebar-brand">
-        <svg class="icon-sm accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke-linecap="round" stroke-linejoin="round"/>
+        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 3v14m0-14l-5 5m5-5l5 5M5 20h14" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         <span class="titlebar-name">BeamDrop</span>
         <span class="status-badge" id="lan-status-badge">
@@ -22,7 +22,7 @@
         </span>
       </div>
       <div class="window-controls">
-        <button id="btn-open-help" class="win-btn" title="Quick Guide &amp; About" aria-label="Help and About">
+        <button id="btn-open-help" class="win-btn" title="Quick Guide &amp; About" aria-label="Help">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
         </button>
         <button id="btn-open-settings" class="win-btn" title="Settings" aria-label="Settings">
@@ -40,107 +40,70 @@
       </div>
     </header>
 
-    <div class="app-shell">
-      <!-- Left Sidebar -->
-      <aside class="sidebar">
-        <div class="card qr-card">
-          <img id="qr-img" class="qr-clickable" title="Click to expand QR Code" alt="Scan to connect" />
-          <div class="url-row">
-            <div class="url-pill" id="server-url">http://...</div>
-            <button id="btn-copy-url" class="btn-icon" title="Copy Address">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-            </button>
-          </div>
-          <div id="mdns-pill" class="mdns-pill hidden"></div>
-          <button id="btn-copy-invite" class="btn btn-sm btn-full-w">Copy One-Tap Connect Link</button>
-          <div class="pin-row">
-            <span class="pin-label">PIN</span>
-            <span class="pin-code" id="pin-code">----</span>
-            <button id="btn-regen-pin" class="btn-icon" title="New PIN">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
-            </button>
-          </div>
-        </div>
+    <div class="workspace-shell">
+      <!-- Left Navigation Rail (210px) -->
+      <aside class="nav-rail">
+        <nav class="nav-list">
+          <button class="nav-item active" data-view="share">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>
+            <span class="nav-label">Share</span>
+            <span class="nav-count" id="nav-files-count">0</span>
+          </button>
+          <button class="nav-item" data-view="connect">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3m4 0v4h-4m0-4h-3"/></svg>
+            <span class="nav-label">Connect</span>
+            <span class="nav-count" id="nav-devices-count">0</span>
+          </button>
+          <button class="nav-item" data-view="transfers">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/></svg>
+            <span class="nav-label">Transfers</span>
+            <span class="nav-count" id="nav-transfers-count">0</span>
+          </button>
+          <button class="nav-item" data-view="clipboard">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            <span class="nav-label">Text &amp; Links</span>
+          </button>
+        </nav>
 
-        <div class="card controls-card">
-          <div class="field-row">
-            <span class="field-label">Wi-Fi / Network</span>
-            <button id="btn-refresh-net" class="btn-icon-xs" title="Refresh Networks">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
-            </button>
-          </div>
-          <!-- 100% Custom Dropdown (no native OS select) -->
-          <div class="custom-select" id="iface-dropdown">
-            <button type="button" id="iface-trigger" class="custom-select-trigger">
-              <span id="iface-current" class="truncate">Detecting...</span>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-            </button>
-            <div id="iface-menu" class="custom-select-menu hidden"></div>
-          </div>
-
-          <label class="toggle-row" for="chk-approval">
-            <span>Ask before connecting</span>
-            <input type="checkbox" id="chk-approval" class="switch" checked />
-          </label>
-
-          <div class="save-dir-box">
-            <span class="field-label">Save Received Files To</span>
-            <div class="save-dir-path" id="save-dir-path"></div>
-            <div class="btn-row">
-              <button id="btn-change-save" class="btn btn-sm">Change</button>
-              <button id="btn-open-save" class="btn btn-sm">Open Folder</button>
-            </div>
-          </div>
-
-          <div class="net-tools">
-            <button id="btn-fix-fw" class="btn btn-sm">Fix Firewall</button>
-            <button id="btn-open-hotspot" class="btn btn-sm">Hotspot</button>
-          </div>
-        </div>
-
-        <div class="card sessions-card">
-          <div class="card-header">
-            <span>Connected (<span id="session-count">0</span>)</span>
-            <button id="btn-revoke" class="btn-link danger">Disconnect All</button>
-          </div>
-          <ul id="sessions-list" class="sessions-list"></ul>
-          <div id="trusted-wrap" class="trusted-wrap hidden">
-            <div class="card-header" style="margin-top:10px;">
-              <span>Remembered (<span id="trusted-count">0</span>)</span>
-            </div>
-            <ul id="trusted-list" class="sessions-list"></ul>
-          </div>
+        <div class="rail-footer">
+          <button id="btn-open-updater" class="rail-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span id="updater-rail-label">Check Updates</span>
+            <span id="updater-dot" class="update-dot hidden"></span>
+          </button>
+          <button id="btn-rail-save" class="rail-btn" title="Open Save Folder">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            <span class="truncate" id="rail-save-label">BeamDrop</span>
+          </button>
+          <button id="btn-rail-theme" class="rail-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+            <span id="rail-theme-label">Light Mode</span>
+          </button>
         </div>
       </aside>
 
-      <!-- Main Workspace -->
-      <main class="main-area">
+      <!-- Main Canvas -->
+      <main class="canvas">
         <div id="approval-banner" class="approval-banner hidden"></div>
 
-        <div id="drop-zone" class="drop-zone">
-          <div class="drop-row">
+        <!-- VIEW 1: SHARE (Gallery Grid + List + Inbuilt Player) -->
+        <section id="view-share" class="view active">
+          <div id="drop-zone" class="drop-bar">
             <div class="drop-text">
-              <div class="drop-title">Drop files or folders anywhere to share</div>
-              <div class="drop-sub">Original quality · Up to 30 GB per file</div>
+              <div class="drop-title">Drop videos, photos, or folders anywhere</div>
+              <div class="drop-sub" id="share-summary">0 items · 0 B · Up to 64 GB per file</div>
             </div>
             <div class="drop-actions">
               <button id="btn-pick-files" class="btn btn-primary">Add Files</button>
               <button id="btn-pick-folder" class="btn">Add Folder</button>
+              <button id="btn-clear-files" class="btn danger-btn">Clear All</button>
             </div>
           </div>
-        </div>
 
-        <div class="tabs">
-          <button class="tab active" data-tab="files">Shared Files (<span id="files-count">0</span>)</button>
-          <button class="tab" data-tab="transfers">Transfers (<span id="transfers-count">0</span>)</button>
-          <button class="tab" data-tab="clipboard">Text &amp; Links</button>
-        </div>
-
-        <section id="tab-files" class="tab-panel active">
           <div class="toolbar">
             <div class="search-wrap">
-              <input id="file-search" type="text" class="search-input" placeholder="Search shared files..." />
-              <button id="btn-clear-search" class="search-clear hidden" title="Clear">
+              <input id="file-search" type="text" class="search-input" placeholder="Search files..." />
+              <button id="btn-clear-search" class="search-clear hidden" aria-label="Clear">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
               </button>
             </div>
@@ -150,16 +113,111 @@
               <button class="pill" data-filter="image">Images</button>
               <button class="pill" data-filter="folder">Folders</button>
             </div>
-            <button id="btn-clear-files" class="btn btn-sm danger-btn">Clear All</button>
+            <div class="segmented" id="layout-seg">
+              <button type="button" class="seg-btn active" data-layout="grid">Grid</button>
+              <button type="button" class="seg-btn" data-layout="list">List</button>
+            </div>
           </div>
-          <div id="files-list" class="item-list"></div>
+
+          <div id="pc-batch-bar" class="pc-batch-bar hidden">
+            <span id="pc-sel-count">0 selected</span>
+            <div class="btn-row">
+              <button id="btn-pc-sel-all" class="btn btn-sm">Select All</button>
+              <button id="btn-pc-clear-sel" class="btn btn-sm">Clear</button>
+              <button id="btn-pc-batch-remove" class="btn btn-sm danger-btn">Remove Selected</button>
+            </div>
+          </div>
+
+          <div id="files-container" class="gallery-grid"></div>
         </section>
 
-        <section id="tab-transfers" class="tab-panel">
+        <!-- VIEW 2: CONNECT (Dedicated 2-Column Pairing & Network Hub) -->
+        <section id="view-connect" class="view">
+          <div class="connect-grid">
+            <div class="card pair-card">
+              <div class="card-title">Pair a Phone or Browser</div>
+              <img id="qr-img" class="qr-clickable" title="Click to expand QR Code" alt="Scan to connect" />
+              <div class="url-row">
+                <div class="url-pill" id="server-url">http://...</div>
+                <button id="btn-copy-url" class="btn-icon" title="Copy Address">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+              </div>
+              <div id="mdns-pill" class="mdns-pill hidden"></div>
+              <button id="btn-copy-invite" class="btn btn-sm btn-full-w">Copy One-Tap Connect Link</button>
+              <div class="pin-row">
+                <span class="pin-label">PIN</span>
+                <span class="pin-code" id="pin-code">----</span>
+                <button id="btn-regen-pin" class="btn-icon" title="New PIN">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="connect-right">
+              <div class="card">
+                <div class="field-row">
+                  <span class="card-title" style="margin:0;">Network &amp; Security</span>
+                  <button id="btn-refresh-net" class="btn-icon-xs" title="Refresh Networks">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+                  </button>
+                </div>
+                <div class="custom-select" id="iface-dropdown">
+                  <button type="button" id="iface-trigger" class="custom-select-trigger">
+                    <span id="iface-current" class="truncate">Detecting...</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                  </button>
+                  <div id="iface-menu" class="custom-select-menu hidden"></div>
+                </div>
+                <label class="toggle-row" for="chk-approval">
+                  <span>Ask before connecting</span>
+                  <input type="checkbox" id="chk-approval" class="switch" checked />
+                </label>
+                <div class="save-dir-box">
+                  <span class="field-label">Save Received Files To</span>
+                  <div class="save-dir-path" id="save-dir-path"></div>
+                  <div class="btn-row">
+                    <button id="btn-change-save" class="btn btn-sm">Change</button>
+                    <button id="btn-open-save" class="btn btn-sm">Open Folder</button>
+                  </div>
+                </div>
+                <div class="net-tools">
+                  <button id="btn-fix-fw" class="btn btn-sm">Fix Firewall</button>
+                  <button id="btn-open-hotspot" class="btn btn-sm">Hotspot</button>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-header">
+                  <span>Connected (<span id="session-count">0</span>)</span>
+                  <button id="btn-revoke" class="btn-link danger">Disconnect All</button>
+                </div>
+                <ul id="sessions-list" class="sessions-list"></ul>
+                <div id="trusted-wrap" class="trusted-wrap hidden">
+                  <div class="card-header" style="margin-top:10px;">
+                    <span>Remembered (<span id="trusted-count">0</span>)</span>
+                  </div>
+                  <ul id="trusted-list" class="sessions-list"></ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- VIEW 3: TRANSFERS -->
+        <section id="view-transfers" class="view">
+          <div class="view-head">
+            <div>
+              <div class="drop-title">Transfer Queue</div>
+              <div class="drop-sub" id="transfers-summary">No active transfers</div>
+            </div>
+            <button id="btn-clear-transfers" class="btn btn-sm">Clear History</button>
+          </div>
           <div id="transfers-list" class="item-list"></div>
         </section>
 
-        <section id="tab-clipboard" class="tab-panel">
+        <!-- VIEW 4: TEXT & LINKS -->
+        <section id="view-clipboard" class="view">
           <div class="clip-composer">
             <textarea id="clip-input" placeholder="Paste text or link to send (press Enter to send)..."></textarea>
             <div class="clip-btns">
@@ -173,6 +231,23 @@
     </div>
   </div>
 
+  <!-- Inbuilt PC Media Preview Modal -->
+  <div id="media-modal" class="modal hidden">
+    <div class="modal-card media-modal-card">
+      <div class="modal-header">
+        <strong id="media-title" class="truncate">Preview</strong>
+        <div class="btn-row">
+          <button id="btn-media-reveal" class="btn btn-sm">Show in Folder</button>
+          <button id="btn-close-media" class="btn btn-sm">Close</button>
+        </div>
+      </div>
+      <video id="pc-video-player" class="hidden" controls playsinline preload="metadata"></video>
+      <img id="pc-image-player" class="hidden" alt="Preview" />
+      <audio id="pc-audio-player" class="hidden" controls></audio>
+      <pre id="pc-text-player" class="pc-text-preview hidden"></pre>
+    </div>
+  </div>
+
   <!-- Fullscreen QR Modal -->
   <div id="qr-modal" class="modal hidden">
     <div class="modal-card qr-modal-card">
@@ -182,6 +257,31 @@
       </div>
       <img id="qr-large-img" alt="Fullscreen QR Code" />
       <div id="qr-large-url" class="url-pill"></div>
+    </div>
+  </div>
+
+  <!-- Auto-Updater Modal -->
+  <div id="updater-modal" class="modal hidden">
+    <div class="modal-card updater-modal-card">
+      <div class="modal-header">
+        <strong id="updater-title">Software Update</strong>
+        <button id="btn-close-updater" class="btn btn-sm">Close</button>
+      </div>
+      <div id="updater-status-text" class="muted-text">Checking GitHub Releases...</div>
+      <div id="updater-notes" class="updater-notes hidden"></div>
+      <div id="updater-progress-wrap" class="hidden">
+        <div class="progress-bar"><div id="updater-progress-fill" class="progress-fill" style="width:0%"></div></div>
+        <div id="updater-progress-meta" class="item-sub" style="margin-top:6px;">0%</div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-updater-check" class="btn btn-sm">Check Again</button>
+        <div class="btn-row">
+          <button id="btn-updater-cancel" class="btn btn-sm hidden">Cancel</button>
+          <button id="btn-updater-download" class="btn btn-primary btn-sm hidden">Download Update</button>
+          <button id="btn-updater-quit" class="btn btn-sm hidden">Install on Quit</button>
+          <button id="btn-updater-now" class="btn btn-primary btn-sm hidden">Install Now</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -217,6 +317,10 @@
           <input id="set-https" type="checkbox" class="switch" />
         </label>
         <label class="setting-row">
+          <span>Check for Updates on Startup</span>
+          <input id="set-autoupdate" type="checkbox" class="switch" />
+        </label>
+        <label class="setting-row">
           <span>Start When PC Turns On</span>
           <input id="set-login" type="checkbox" class="switch" />
         </label>
@@ -242,7 +346,7 @@
       <div class="guide-list">
         <div class="guide-item">
           <strong>College / Office PC has a strict firewall?</strong>
-          <p>Click <b>Fix Firewall</b> in the sidebar, or turn on Windows <b>Hotspot</b> and connect your phone directly to your PC's Wi-Fi.</p>
+          <p>Go to <b>Connect</b> and click <b>Fix Firewall</b>, or turn on Windows <b>Hotspot</b> and connect your phone directly to your PC's Wi-Fi.</p>
         </div>
         <div class="guide-item">
           <strong>Phone and PC are on different Wi-Fi networks?</strong>
@@ -254,7 +358,7 @@
         </div>
       </div>
       <div class="about-box">
-        <div><strong>BeamDrop v1.3.0</strong> · GNU GPLv3</div>
+        <div><strong>BeamDrop v1.4.2</strong> · GNU GPLv3</div>
         <div class="about-sub">Built by <b>Atharva Patil | P4inz</b> (<code>p4inz-code</code>)</div>
         <div class="about-links">
           <a href="https://github.com/p4inz-code/beamdrop" target="_blank" rel="noopener noreferrer" class="btn btn-sm">GitHub</a>

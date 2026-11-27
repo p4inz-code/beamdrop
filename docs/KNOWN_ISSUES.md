@@ -4,10 +4,10 @@ BeamDrop is built for fast, reliable local transfers, but a few network and brow
 
 1. **College, Hotel, or Cafe Wi-Fi Blocks Connections**:
    Public Wi-Fi routers often block devices from talking to each other.
-   **Fix**: Click **Hotspot** in BeamDrop's sidebar to turn on Windows Mobile Hotspot, then connect your phone to your PC's Wi-Fi directly.
+   **Fix**: Open the **Connect** tab in BeamDrop and click **Hotspot** to turn on Windows Mobile Hotspot, then connect your phone to your PC's Wi-Fi directly.
 2. **Windows Firewall Blocks Your Phone**:
    If Windows marks your Wi-Fi as *Public*, it may block incoming connections.
-   **Fix**: Click **Fix Firewall** in the sidebar and accept the prompt.
+   **Fix**: Open the **Connect** tab and click **Fix Firewall**, then accept the prompt.
 3. **MKV / AVI Videos Won't Play Inside the Browser**:
    Phone browsers only play MP4, MOV, and WebM natively.
    **Fix**: Tap **Open in VLC** on the video card, turn on **Play MKV Videos in Browser** in Settings (if FFmpeg is installed), or tap **Download**.

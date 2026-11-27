@@ -2,12 +2,15 @@ const $ = (id) => document.getElementById(id);
 
 const transfers = new Map();
 const pendingChallenges = [];
+const selectedFileIds = new Set();
 const PAGE_SIZE = 50;
 let allFiles = [];
 let visibleLimit = PAGE_SIZE;
 let currentQrUrl = '';
 let currentState = null;
+let currentPreviewFile = null;
 let selectedTheme = 'dark';
+let shareLayout = localStorage.getItem('bd_layout') || 'grid';
 let activeFilter = 'all';
 let searchQuery = '';
 let toastTimer = null;
@@ -29,13 +32,13 @@ function isSafeHttpUrl(raw) {
   }
 }
 
-function createSvgIcon(kind) {
+function createSvgIcon(kind, cls = 'item-icon') {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('fill', 'none');
   svg.setAttribute('stroke', 'currentColor');
   svg.setAttribute('stroke-width', '1.75');
-  svg.setAttribute('class', 'item-icon');
+  svg.setAttribute('class', cls);
 
   const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   if (kind === 'folder') {
@@ -44,6 +47,8 @@ function createSvgIcon(kind) {
     path.setAttribute('d', 'M15 10l4.55-2.28A1 1 0 0 1 21 8.62v6.76a1 1 0 0 1-1.45.9L15 14v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2z');
   } else if (kind === 'image') {
     path.setAttribute('d', 'M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5zm4 10l3-3 4 4 2-2 3 3');
+  } else if (kind === 'audio') {
+    path.setAttribute('d', 'M9 18V5l12-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm12-2a3 3 0 1 1-6 0 3 3 0 0 1 6 0z');
   } else {
     path.setAttribute('d', 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z');
   }
@@ -66,19 +71,50 @@ function formatBytes(bytes) {
   return `${(bytes / 1024 ** i).toFixed(i >= 2 ? 2 : 0)} ${units[i]}`;
 }
 
+const TEXT_EXT_RE = /\.(txt|md|log|json|csv|ya?ml|xml|js|mjs|cjs|ts|py|css|html?|sh|ps1|ini|conf|env)$/i;
+
 function getFileKind(file) {
   if (file.isDirectory) return 'folder';
   if (file.mimeType.startsWith('video/')) return 'video';
   if (file.mimeType.startsWith('image/')) return 'image';
+  if (file.mimeType.startsWith('audio/')) return 'audio';
+  if (file.mimeType.startsWith('text/') || file.mimeType === 'application/json' || TEXT_EXT_RE.test(file.name)) return 'text';
   return 'file';
+}
+
+function getExtLabel(file) {
+  if (file.isDirectory) return 'FOLDER';
+  const dot = file.name.lastIndexOf('.');
+  return dot > 0 ? file.name.slice(dot + 1, dot + 6).toUpperCase() : 'FILE';
+}
+
+function previewStreamUrl(file) {
+  if (!currentState || !currentState.localBaseUrl) return '';
+  return `${currentState.localBaseUrl}/api/files/${encodeURIComponent(file.id)}/stream?token=${encodeURIComponent(currentState.localPreviewToken)}`;
 }
 
 function applyTheme(theme) {
   selectedTheme = theme === 'light' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', selectedTheme);
+  $('rail-theme-label').textContent = selectedTheme === 'dark' ? 'Light Mode' : 'Dark Mode';
   document.querySelectorAll('#theme-seg .seg-btn').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.themeVal === selectedTheme);
   });
+}
+
+function applyShareLayout(layout) {
+  shareLayout = layout === 'list' ? 'list' : 'grid';
+  localStorage.setItem('bd_layout', shareLayout);
+  document.querySelectorAll('#layout-seg .seg-btn').forEach((b) => {
+    b.classList.toggle('active', b.dataset.layout === shareLayout);
+  });
+  const container = $('files-container');
+  container.className = shareLayout === 'grid' ? 'gallery-grid' : 'item-list';
+}
+
+function switchView(viewName) {
+  document.querySelectorAll('.nav-item').forEach((n) => n.classList.toggle('active', n.dataset.view === viewName));
+  document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === `view-${viewName}`));
 }
 
 function renderState(state) {
@@ -88,6 +124,7 @@ function renderState(state) {
   if (state.settings && state.settings.theme) {
     applyTheme(state.settings.theme);
   }
+  applyShareLayout(shareLayout);
 
   if ($('qr-img').src !== state.qrDataUrl) {
     $('qr-img').src = state.qrDataUrl;
@@ -99,6 +136,7 @@ function renderState(state) {
   $('pin-code').textContent = state.pin;
   $('chk-approval').checked = state.requireApproval;
   $('save-dir-path').textContent = state.saveDir;
+  $('rail-save-label').textContent = state.saveDir.split(/[/\\]/).pop() || 'Save Folder';
 
   const mdnsEl = $('mdns-pill');
   if (state.mdnsUrl) {
@@ -150,14 +188,75 @@ function renderState(state) {
   renderClipboard(state.clipboard);
 }
 
+function updatePcBatchBar() {
+  const bar = $('pc-batch-bar');
+  if (selectedFileIds.size === 0) {
+    bar.classList.add('hidden');
+  } else {
+    bar.classList.remove('hidden');
+    $('pc-sel-count').textContent = `${selectedFileIds.size} selected`;
+  }
+}
+
+async function openMediaPreview(file) {
+  if (file.isDirectory) return;
+  const kind = getFileKind(file);
+  if (!['video', 'image', 'audio', 'text'].includes(kind)) return;
+
+  currentPreviewFile = file;
+  $('media-title').textContent = file.name;
+  const videoEl = $('pc-video-player');
+  const imgEl = $('pc-image-player');
+  const audioEl = $('pc-audio-player');
+  const textEl = $('pc-text-player');
+  const url = previewStreamUrl(file);
+
+  videoEl.pause();
+  videoEl.classList.add('hidden');
+  videoEl.removeAttribute('src');
+  imgEl.classList.add('hidden');
+  imgEl.removeAttribute('src');
+  audioEl.pause();
+  audioEl.classList.add('hidden');
+  audioEl.removeAttribute('src');
+  textEl.classList.add('hidden');
+  textEl.textContent = '';
+
+  if (kind === 'video') {
+    videoEl.classList.remove('hidden');
+    videoEl.src = url;
+  } else if (kind === 'image') {
+    imgEl.classList.remove('hidden');
+    imgEl.src = url;
+  } else if (kind === 'audio') {
+    audioEl.classList.remove('hidden');
+    audioEl.src = url;
+  } else if (kind === 'text') {
+    textEl.textContent = 'Loading preview...';
+    textEl.classList.remove('hidden');
+    try {
+      const res = await fetch(url, { headers: { Range: 'bytes=0-524287' } });
+      const txt = await res.text();
+      textEl.textContent = file.size > 524288 ? `${txt}\n\n... (preview capped at 512 KB)` : txt;
+    } catch {
+      textEl.textContent = 'Could not load text preview.';
+    }
+  }
+  $('media-modal').classList.remove('hidden');
+}
+
 function renderFiles(files, force = false) {
   const sig = JSON.stringify(files);
   if (!force && sig === lastFilesSig) return;
   lastFilesSig = sig;
   allFiles = files;
-  $('files-count').textContent = String(files.length);
-  const list = $('files-list');
-  list.textContent = '';
+
+  const totalBytes = files.reduce((acc, f) => acc + (f.size || 0), 0);
+  $('nav-files-count').textContent = String(files.length);
+  $('share-summary').textContent = `${files.length} item${files.length === 1 ? '' : 's'} · ${formatBytes(totalBytes)} · Up to 64 GB per file`;
+
+  const container = $('files-container');
+  container.textContent = '';
 
   const filtered = files.filter((file) => {
     if (activeFilter === 'video' && !file.mimeType.startsWith('video/')) return false;
@@ -168,46 +267,164 @@ function renderFiles(files, force = false) {
   });
 
   if (filtered.length === 0) {
-    const empty = document.createElement('div');
-    empty.className = 'empty-state';
-    empty.textContent = files.length === 0
-      ? 'No shared files yet. Drop videos or folders above to share.'
-      : 'No files match the current filter.';
-    list.appendChild(empty);
+    if (files.length === 0) {
+      const card = document.createElement('div');
+      card.className = 'onboarding-card';
+      const h = document.createElement('strong');
+      h.textContent = 'Ready to share';
+      const steps = document.createElement('div');
+      steps.className = 'onboarding-steps';
+      [
+        ['01', 'Drop Files or Folders', 'Drag videos, photos, or folders anywhere on this window.'],
+        ['02', 'Connect Phone', 'Open the Connect tab to scan the QR code or copy the link.'],
+        ['03', 'Stream or Download', 'Play videos or download files directly on your phone.']
+      ].forEach(([num, title, desc]) => {
+        const b = document.createElement('div');
+        b.className = 'step-box';
+        const n = document.createElement('div');
+        n.className = 'step-num';
+        n.textContent = num;
+        const t = document.createElement('strong');
+        t.textContent = title;
+        const p = document.createElement('p');
+        p.textContent = desc;
+        b.appendChild(n);
+        b.appendChild(t);
+        b.appendChild(p);
+        steps.appendChild(b);
+      });
+      card.appendChild(h);
+      card.appendChild(steps);
+      container.appendChild(card);
+    } else {
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.textContent = 'No files match the current filter.';
+      container.appendChild(empty);
+    }
+    updatePcBatchBar();
     return;
   }
 
   const slice = filtered.slice(0, visibleLimit);
   for (const file of slice) {
-    const row = document.createElement('div');
-    row.className = 'item-row';
+    const kind = getFileKind(file);
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
+    chk.className = shareLayout === 'grid' ? 'custom-chk card-chk' : 'custom-chk';
+    chk.checked = selectedFileIds.has(file.id);
+    chk.addEventListener('change', () => {
+      if (chk.checked) selectedFileIds.add(file.id);
+      else selectedFileIds.delete(file.id);
+      updatePcBatchBar();
+    });
 
-    row.appendChild(createSvgIcon(getFileKind(file)));
+    if (shareLayout === 'grid') {
+      const card = document.createElement('div');
+      card.className = 'gallery-card';
 
-    const meta = document.createElement('div');
-    meta.className = 'item-meta';
+      const thumbBox = document.createElement('div');
+      thumbBox.className = 'gallery-thumb-box';
+      thumbBox.appendChild(chk);
 
-    const nameEl = document.createElement('div');
-    nameEl.className = 'item-name';
-    nameEl.textContent = file.name;
+      if (kind === 'image' && currentState?.localPreviewToken) {
+        const img = document.createElement('img');
+        img.loading = 'lazy';
+        img.src = previewStreamUrl(file);
+        img.alt = file.name;
+        thumbBox.appendChild(img);
+      } else if (kind === 'video' && currentState?.localPreviewToken) {
+        const vid = document.createElement('video');
+        vid.preload = 'metadata';
+        vid.muted = true;
+        vid.src = `${previewStreamUrl(file)}#t=0.5`;
+        thumbBox.appendChild(vid);
+      } else {
+        thumbBox.appendChild(createSvgIcon(kind, 'gallery-placeholder'));
+      }
 
-    const subEl = document.createElement('div');
-    subEl.className = 'item-sub';
-    subEl.textContent = file.isDirectory
-      ? `Folder (.zip) · From ${file.source.toUpperCase()}`
-      : `${formatBytes(file.size)} · From ${file.source.toUpperCase()}`;
+      const extBadge = document.createElement('span');
+      extBadge.className = 'ext-badge';
+      extBadge.textContent = getExtLabel(file);
+      thumbBox.appendChild(extBadge);
+      thumbBox.addEventListener('click', (e) => {
+        if (e.target !== chk) openMediaPreview(file);
+      });
 
-    meta.appendChild(nameEl);
-    meta.appendChild(subEl);
+      const body = document.createElement('div');
+      body.className = 'gallery-body';
 
-    const removeBtn = document.createElement('button');
-    removeBtn.className = 'btn btn-sm';
-    removeBtn.textContent = 'Remove';
-    removeBtn.addEventListener('click', () => window.beamdrop.removeSharedItem(file.id));
+      const nameEl = document.createElement('div');
+      nameEl.className = 'item-name';
+      nameEl.textContent = file.name;
 
-    row.appendChild(meta);
-    row.appendChild(removeBtn);
-    list.appendChild(row);
+      const subEl = document.createElement('div');
+      subEl.className = 'item-sub';
+      subEl.textContent = file.isDirectory ? `Folder (.zip) · ${file.source.toUpperCase()}` : `${formatBytes(file.size)} · ${file.source.toUpperCase()}`;
+
+      const actions = document.createElement('div');
+      actions.className = 'gallery-actions';
+      if (['video', 'image', 'audio', 'text'].includes(kind)) {
+        const prevBtn = document.createElement('button');
+        prevBtn.className = 'btn btn-sm';
+        prevBtn.textContent = kind === 'video' ? 'Play' : kind === 'audio' ? 'Listen' : kind === 'text' ? 'Read' : 'View';
+        prevBtn.addEventListener('click', () => openMediaPreview(file));
+        actions.appendChild(prevBtn);
+      } else {
+        const spacer = document.createElement('span');
+        actions.appendChild(spacer);
+      }
+
+      const remBtn = document.createElement('button');
+      remBtn.className = 'btn btn-sm';
+      remBtn.textContent = 'Remove';
+      remBtn.addEventListener('click', () => window.beamdrop.removeSharedItem(file.id));
+      actions.appendChild(remBtn);
+
+      body.appendChild(nameEl);
+      body.appendChild(subEl);
+      body.appendChild(actions);
+      card.appendChild(thumbBox);
+      card.appendChild(body);
+      container.appendChild(card);
+    } else {
+      const row = document.createElement('div');
+      row.className = 'item-row';
+      row.appendChild(chk);
+      row.appendChild(createSvgIcon(kind));
+
+      const meta = document.createElement('div');
+      meta.className = 'item-meta';
+      const nameEl = document.createElement('div');
+      nameEl.className = 'item-name';
+      nameEl.textContent = file.name;
+      const subEl = document.createElement('div');
+      subEl.className = 'item-sub';
+      subEl.textContent = file.isDirectory
+        ? `Folder (.zip) · From ${file.source.toUpperCase()}`
+        : `${getExtLabel(file)} · ${formatBytes(file.size)} · From ${file.source.toUpperCase()}`;
+      meta.appendChild(nameEl);
+      meta.appendChild(subEl);
+      row.appendChild(meta);
+
+      const btns = document.createElement('div');
+      btns.className = 'btn-row';
+      if (kind === 'video' || kind === 'image') {
+        const prevBtn = document.createElement('button');
+        prevBtn.className = 'btn btn-sm';
+        prevBtn.textContent = kind === 'video' ? 'Play' : 'View';
+        prevBtn.addEventListener('click', () => openMediaPreview(file));
+        btns.appendChild(prevBtn);
+      }
+      const remBtn = document.createElement('button');
+      remBtn.className = 'btn btn-sm';
+      remBtn.textContent = 'Remove';
+      remBtn.addEventListener('click', () => window.beamdrop.removeSharedItem(file.id));
+      btns.appendChild(remBtn);
+
+      row.appendChild(btns);
+      container.appendChild(row);
+    }
   }
 
   if (filtered.length > visibleLimit) {
@@ -218,13 +435,20 @@ function renderFiles(files, force = false) {
       visibleLimit += PAGE_SIZE;
       renderFiles(allFiles, true);
     });
-    list.appendChild(moreBtn);
+    container.appendChild(moreBtn);
   }
+  updatePcBatchBar();
 }
 
 function renderTransfers() {
   const items = Array.from(transfers.values());
-  $('transfers-count').textContent = String(items.length);
+  const active = items.filter((t) => t.status === 'active');
+  const speedSum = active.reduce((acc, t) => acc + (t.speedBps || 0), 0);
+  $('nav-transfers-count').textContent = String(active.length || items.length);
+  $('transfers-summary').textContent = active.length > 0
+    ? `${active.length} active · ${(speedSum / (1024 * 1024)).toFixed(1)} MB/s`
+    : `${items.length} recent transfer${items.length === 1 ? '' : 's'}`;
+
   const list = $('transfers-list');
   list.textContent = '';
 
@@ -296,6 +520,7 @@ function renderSessions(sessions) {
   if (sig === lastSessionsSig) return;
   lastSessionsSig = sig;
   $('session-count').textContent = String(sessions.length);
+  $('nav-devices-count').textContent = String(sessions.length);
   const list = $('sessions-list');
   list.textContent = '';
 
@@ -309,11 +534,9 @@ function renderSessions(sessions) {
   for (const s of sessions) {
     const li = document.createElement('li');
     li.className = 'session-item';
-
     const label = document.createElement('span');
     label.className = 'truncate';
     label.textContent = `${s.deviceName} — ${s.ip}`;
-
     const kickBtn = document.createElement('button');
     kickBtn.className = 'btn-link danger';
     kickBtn.textContent = 'Kick';
@@ -321,7 +544,6 @@ function renderSessions(sessions) {
       window.beamdrop.revokeSession(s.id);
       showToast(`Disconnected ${s.deviceName}`);
     });
-
     li.appendChild(label);
     li.appendChild(kickBtn);
     list.appendChild(li);
@@ -344,11 +566,9 @@ function renderTrusted(trusted) {
   for (const td of trusted) {
     const li = document.createElement('li');
     li.className = 'session-item';
-
     const label = document.createElement('span');
     label.className = 'truncate';
     label.textContent = td.deviceName;
-
     const forgetBtn = document.createElement('button');
     forgetBtn.className = 'btn-link danger';
     forgetBtn.textContent = 'Forget';
@@ -356,7 +576,6 @@ function renderTrusted(trusted) {
       window.beamdrop.revokeTrusted(td.id);
       showToast(`Forgot ${td.deviceName}`);
     });
-
     li.appendChild(label);
     li.appendChild(forgetBtn);
     list.appendChild(li);
@@ -372,24 +591,19 @@ function renderClipboard(entries) {
   for (const entry of entries) {
     const row = document.createElement('div');
     row.className = 'item-row';
-
     const meta = document.createElement('div');
     meta.className = 'item-meta';
-
     const textEl = document.createElement('div');
     textEl.className = 'item-name';
     textEl.textContent = entry.text;
-
     const subEl = document.createElement('div');
     subEl.className = 'item-sub';
     subEl.textContent = `From ${entry.from} · ${new Date(entry.timestamp).toLocaleTimeString()}`;
-
     meta.appendChild(textEl);
     meta.appendChild(subEl);
 
     const btns = document.createElement('div');
     btns.className = 'btn-row';
-
     if (isSafeHttpUrl(entry.text)) {
       const openLink = document.createElement('a');
       openLink.className = 'btn btn-sm';
@@ -399,7 +613,6 @@ function renderClipboard(entries) {
       openLink.textContent = 'Open';
       btns.appendChild(openLink);
     }
-
     const copyBtn = document.createElement('button');
     copyBtn.className = 'btn btn-sm';
     copyBtn.textContent = 'Copy';
@@ -422,13 +635,11 @@ function renderApprovalBanner() {
     banner.classList.add('hidden');
     return;
   }
-
   const ch = pendingChallenges[0];
   banner.classList.remove('hidden');
 
   const msg = document.createElement('span');
   msg.textContent = `${ch.deviceName} (${ch.ip}) wants to connect.`;
-
   const actions = document.createElement('div');
   actions.className = 'btn-row';
 
@@ -468,29 +679,30 @@ function renderApprovalBanner() {
   banner.appendChild(actions);
 }
 
-// Custom Window Controls
+// Window Controls & Nav Rail
 $('win-min').addEventListener('click', () => window.beamdrop.minimizeWindow());
 $('win-max').addEventListener('click', () => window.beamdrop.maximizeWindow());
 $('win-close').addEventListener('click', () => window.beamdrop.closeWindow());
 
-// Custom Adapter Dropdown
-$('iface-trigger').addEventListener('click', (e) => {
-  e.stopPropagation();
-  $('iface-menu').classList.toggle('hidden');
+document.querySelectorAll('.nav-item').forEach((btn) => {
+  btn.addEventListener('click', () => switchView(btn.dataset.view));
 });
-document.addEventListener('click', () => $('iface-menu').classList.add('hidden'));
 
-// Tabs
-document.querySelectorAll('.tab').forEach((tab) => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
-    document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
-    tab.classList.add('active');
-    $(`tab-${tab.dataset.tab}`).classList.add('active');
+$('btn-rail-save').addEventListener('click', () => window.beamdrop.openSaveDir());
+$('btn-rail-theme').addEventListener('click', async () => {
+  const next = selectedTheme === 'dark' ? 'light' : 'dark';
+  applyTheme(next);
+  await window.beamdrop.updateSettings({ theme: next });
+});
+
+// Layout & Filter Controls
+document.querySelectorAll('#layout-seg .seg-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    applyShareLayout(btn.dataset.layout);
+    renderFiles(allFiles, true);
   });
 });
 
-// Filter pills & custom search clear
 document.querySelectorAll('.pill').forEach((pill) => {
   pill.addEventListener('click', () => {
     document.querySelectorAll('.pill').forEach((p) => p.classList.remove('active'));
@@ -512,7 +724,31 @@ $('btn-clear-search').addEventListener('click', () => {
   renderFiles(allFiles, true);
 });
 
-// Controls
+// Batch controls on PC
+$('btn-pc-sel-all').addEventListener('click', () => {
+  for (const f of allFiles) selectedFileIds.add(f.id);
+  renderFiles(allFiles, true);
+});
+$('btn-pc-clear-sel').addEventListener('click', () => {
+  selectedFileIds.clear();
+  renderFiles(allFiles, true);
+});
+$('btn-pc-batch-remove').addEventListener('click', async () => {
+  for (const id of Array.from(selectedFileIds)) {
+    await window.beamdrop.removeSharedItem(id);
+    selectedFileIds.delete(id);
+  }
+  updatePcBatchBar();
+  showToast('Removed selected files');
+});
+
+// Adapter Dropdown & Connect View
+$('iface-trigger').addEventListener('click', (e) => {
+  e.stopPropagation();
+  $('iface-menu').classList.toggle('hidden');
+});
+document.addEventListener('click', () => $('iface-menu').classList.add('hidden'));
+
 $('btn-refresh-net').addEventListener('click', async () => {
   await window.beamdrop.refreshNetwork();
   showToast('Networks refreshed');
@@ -540,8 +776,15 @@ $('btn-revoke').addEventListener('click', () => {
 $('btn-pick-files').addEventListener('click', () => window.beamdrop.pickFiles());
 $('btn-pick-folder').addEventListener('click', () => window.beamdrop.pickFolder());
 $('btn-clear-files').addEventListener('click', async () => {
+  selectedFileIds.clear();
   await window.beamdrop.clearSharedItems();
   showToast('Shared list cleared');
+});
+$('btn-clear-transfers').addEventListener('click', () => {
+  for (const [id, t] of transfers.entries()) {
+    if (t.status !== 'active') transfers.delete(id);
+  }
+  renderTransfers();
 });
 $('btn-paste-send').addEventListener('click', async () => {
   const entry = await window.beamdrop.pasteAndSendClipboard();
@@ -565,22 +808,22 @@ $('clip-input').addEventListener('keydown', (e) => {
 });
 
 // Full-window Drag & Drop
-const dropZone = $('drop-zone');
+const dropBar = $('drop-zone');
 document.body.addEventListener('dragover', (e) => {
   e.preventDefault();
   document.body.classList.add('window-drag');
-  dropZone.classList.add('drag-over');
+  dropBar.classList.add('drag-over');
 });
 document.body.addEventListener('dragleave', (e) => {
   if (e.relatedTarget === null) {
     document.body.classList.remove('window-drag');
-    dropZone.classList.remove('drag-over');
+    dropBar.classList.remove('drag-over');
   }
 });
 document.body.addEventListener('drop', async (e) => {
   e.preventDefault();
   document.body.classList.remove('window-drag');
-  dropZone.classList.remove('drag-over');
+  dropBar.classList.remove('drag-over');
   const paths = [];
   for (const file of e.dataTransfer.files) {
     const p = window.beamdrop.getDroppedFilePath(file);
@@ -588,11 +831,31 @@ document.body.addEventListener('drop', async (e) => {
   }
   if (paths.length > 0) {
     await window.beamdrop.addPaths(paths);
+    switchView('share');
     showToast(`Added ${paths.length} item(s)`);
   }
 });
 
-// Modals, Custom Stepper, Theme & Shortcuts
+// Modals: Media, QR, Help, Settings, Auto-Updater
+$('btn-close-media').addEventListener('click', () => {
+  const v = $('pc-video-player');
+  v.pause();
+  v.removeAttribute('src');
+  v.load();
+  const a = $('pc-audio-player');
+  a.pause();
+  a.removeAttribute('src');
+  a.load();
+  $('pc-image-player').removeAttribute('src');
+  $('pc-text-player').textContent = '';
+  $('media-modal').classList.add('hidden');
+});
+$('btn-media-reveal').addEventListener('click', () => {
+  if (currentPreviewFile) {
+    window.beamdrop.openSaveDir();
+  }
+});
+
 $('qr-img').addEventListener('click', () => $('qr-modal').classList.remove('hidden'));
 $('btn-close-qr').addEventListener('click', () => $('qr-modal').classList.add('hidden'));
 
@@ -604,12 +867,10 @@ document.querySelectorAll('#theme-seg .seg-btn').forEach((btn) => {
 });
 
 $('btn-port-dec').addEventListener('click', () => {
-  const v = Math.max(1024, (Number($('set-port').value) || 5050) - 1);
-  $('set-port').value = String(v);
+  $('set-port').value = String(Math.max(1024, (Number($('set-port').value) || 5050) - 1));
 });
 $('btn-port-inc').addEventListener('click', () => {
-  const v = Math.min(65535, (Number($('set-port').value) || 5050) + 1);
-  $('set-port').value = String(v);
+  $('set-port').value = String(Math.min(65535, (Number($('set-port').value) || 5050) + 1));
 });
 
 $('btn-open-settings').addEventListener('click', () => {
@@ -619,6 +880,7 @@ $('btn-open-settings').addEventListener('click', () => {
     $('set-port').value = String(s.port);
     $('set-mdns').checked = Boolean(s.enableMdns);
     $('set-https').checked = Boolean(s.useHttps);
+    $('set-autoupdate').checked = s.checkUpdatesOnStartup !== false;
     $('set-login').checked = Boolean(s.launchAtLogin);
     $('set-remux').checked = Boolean(s.ffmpegRemux);
     $('set-remux').disabled = !currentState.ffmpegAvailable;
@@ -634,6 +896,7 @@ $('btn-save-settings').addEventListener('click', async () => {
     port,
     enableMdns: $('set-mdns').checked,
     useHttps: $('set-https').checked,
+    checkUpdatesOnStartup: $('set-autoupdate').checked,
     launchAtLogin: $('set-login').checked,
     ffmpegRemux: $('set-remux').checked
   });
@@ -651,14 +914,101 @@ $('btn-fix-fw').addEventListener('click', async () => {
   const ok = await window.beamdrop.fixFirewall();
   showToast(ok ? 'Firewall rule added' : 'Firewall prompt cancelled');
 });
-
 $('btn-open-hotspot').addEventListener('click', () => window.beamdrop.openHotspot());
 
+// Auto-Updater UI
+async function runUpdateCheck() {
+  $('updater-status-text').textContent = 'Checking GitHub Releases...';
+  $('updater-notes').classList.add('hidden');
+  $('updater-download-row');
+  $('btn-updater-download').classList.add('hidden');
+  $('btn-updater-now').classList.add('hidden');
+  $('btn-updater-quit').classList.add('hidden');
+  try {
+    await window.beamdrop.checkUpdates();
+  } catch (err) {
+    $('updater-status-text').textContent = `Could not check for updates: ${err.message}`;
+  }
+}
+
+$('btn-open-updater').addEventListener('click', () => {
+  $('updater-modal').classList.remove('hidden');
+  runUpdateCheck();
+});
+$('btn-close-updater').addEventListener('click', () => $('updater-modal').classList.add('hidden'));
+$('btn-updater-check').addEventListener('click', runUpdateCheck);
+
+$('btn-updater-download').addEventListener('click', async () => {
+  $('btn-updater-download').classList.add('hidden');
+  $('btn-updater-cancel').classList.remove('hidden');
+  $('updater-progress-wrap').classList.remove('hidden');
+  $('updater-status-text').textContent = 'Downloading update...';
+  try {
+    await window.beamdrop.downloadUpdate();
+  } catch (err) {
+    $('updater-status-text').textContent = `Update failed: ${err.message}`;
+    $('btn-updater-cancel').classList.add('hidden');
+  }
+});
+
+$('btn-updater-cancel').addEventListener('click', () => window.beamdrop.cancelUpdate());
+$('btn-updater-now').addEventListener('click', () => window.beamdrop.installUpdateNow());
+$('btn-updater-quit').addEventListener('click', () => {
+  window.beamdrop.installUpdateOnQuit();
+  $('updater-modal').classList.add('hidden');
+  showToast('Update will install when you quit');
+});
+
+window.beamdrop.onUpdaterStatus((st) => {
+  if (st.state === 'available' && st.release) {
+    $('updater-dot').classList.remove('hidden');
+    $('updater-rail-label').textContent = `Update v${st.release.latestVersion}`;
+    $('updater-status-text').textContent = `Version ${st.release.latestVersion} is available (current: ${st.release.currentVersion}).`;
+    if (st.release.notes) {
+      $('updater-notes').textContent = st.release.notes;
+      $('updater-notes').classList.remove('hidden');
+    }
+    if (st.release.installer) {
+      $('btn-updater-download').classList.remove('hidden');
+    }
+  } else if (st.state === 'up-to-date' && st.release) {
+    $('updater-dot').classList.add('hidden');
+    $('updater-rail-label').textContent = 'Up to Date';
+    $('updater-status-text').textContent = `BeamDrop ${st.release.currentVersion} is the latest version.`;
+  } else if (st.state === 'downloaded') {
+    $('btn-updater-cancel').classList.add('hidden');
+    $('btn-updater-now').classList.remove('hidden');
+    $('btn-updater-quit').classList.remove('hidden');
+    $('updater-status-text').textContent = st.sha256Verified
+      ? 'Downloaded and verified (SHA-256). Ready to install.'
+      : 'Downloaded. Ready to install.';
+  } else if (st.state === 'cancelled') {
+    $('btn-updater-cancel').classList.add('hidden');
+    $('updater-progress-wrap').classList.add('hidden');
+    $('updater-status-text').textContent = 'Download cancelled.';
+  }
+});
+
+window.beamdrop.onUpdaterProgress((pr) => {
+  $('updater-progress-fill').style.width = `${pr.percent}%`;
+  const dlMb = (pr.downloadedBytes / (1024 * 1024)).toFixed(1);
+  const totMb = pr.totalBytes ? (pr.totalBytes / (1024 * 1024)).toFixed(1) : '?';
+  const mbps = (pr.speedBps / (1024 * 1024)).toFixed(1);
+  $('updater-progress-meta').textContent = `${pr.percent}% · ${dlMb} / ${totMb} MB · ${mbps} MB/s`;
+});
+
+// Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
+    $('media-modal').classList.add('hidden');
+    const v = $('pc-video-player');
+    v.pause();
+    v.removeAttribute('src');
+    v.load();
     $('qr-modal').classList.add('hidden');
     $('settings-modal').classList.add('hidden');
     $('help-modal').classList.add('hidden');
+    $('updater-modal').classList.add('hidden');
     $('iface-menu').classList.add('hidden');
   } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'o') {
     e.preventDefault();
@@ -668,6 +1018,7 @@ document.addEventListener('keydown', (e) => {
     window.beamdrop.pickFiles();
   } else if (e.ctrlKey && e.key.toLowerCase() === 'f') {
     e.preventDefault();
+    switchView('share');
     $('file-search').focus();
   }
 });

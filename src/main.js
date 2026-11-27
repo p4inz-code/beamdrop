@@ -26,6 +26,7 @@ const {
 } = require('./network');
 const { SettingsStore } = require('./settings');
 const { DiagnosticsLogger } = require('./logger');
+const { AppUpdater } = require('./updater');
 
 let mainWindow = null;
 let tray = null;
@@ -33,6 +34,7 @@ let server = null;
 let settingsStore = null;
 let logger = null;
 let mdns = null;
+let updater = null;
 let selectedAddress = null;
 let isQuitting = false;
 let powerSaveId = null;
@@ -78,6 +80,8 @@ async function buildAppState() {
 
   return {
     url,
+    localBaseUrl: `${proto}://127.0.0.1:${server.port}`,
+    localPreviewToken: server.localPreviewToken,
     mdnsUrl,
     qrUrl,
     qrDataUrl,
@@ -107,14 +111,17 @@ function sendToRenderer(channel, payload) {
 }
 
 async function createWindow() {
+  const wb = settingsStore.get().windowBounds || { width: 1240, height: 820 };
   mainWindow = new BrowserWindow({
-    width: 1120,
-    height: 750,
-    minWidth: 880,
-    minHeight: 600,
+    width: wb.width,
+    height: wb.height,
+    x: wb.x,
+    y: wb.y,
+    minWidth: 940,
+    minHeight: 640,
     frame: false,
     icon: getAppIcon(),
-    backgroundColor: '#09090b',
+    backgroundColor: '#0c0c0e',
     title: 'BeamDrop',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -124,6 +131,18 @@ async function createWindow() {
       webSecurity: true
     }
   });
+
+  let boundsTimer = null;
+  const saveBounds = () => {
+    clearTimeout(boundsTimer);
+    boundsTimer = setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isMaximized()) {
+        settingsStore.update({ windowBounds: mainWindow.getBounds() }).catch(() => {});
+      }
+    }, 400);
+  };
+  mainWindow.on('resize', saveBounds);
+  mainWindow.on('move', saveBounds);
 
   mainWindow.webContents.on('will-navigate', (e, url) => {
     if (!url.startsWith('file://')) e.preventDefault();
@@ -391,6 +410,26 @@ function registerIpc() {
   });
   ipcMain.handle('app:remove-shared', (_e, id) => server.removeSharedItem(id));
   ipcMain.handle('app:send-clipboard', (_e, text) => server.addClipboardEntry(text, 'PC'));
+
+  // Auto-Updater IPC
+  ipcMain.handle('updater:check', () => updater.checkForUpdates());
+  ipcMain.handle('updater:download', () => updater.downloadUpdate());
+  ipcMain.handle('updater:cancel', () => {
+    updater.cancelDownload();
+    return true;
+  });
+  ipcMain.handle('updater:install-now', async () => {
+    if (!updater.downloadedPath) return false;
+    await shell.openPath(updater.downloadedPath);
+    isQuitting = true;
+    app.quit();
+    return true;
+  });
+  ipcMain.handle('updater:install-on-quit', () => {
+    if (!updater.downloadedPath) return false;
+    updater.pendingInstallOnQuit = true;
+    return true;
+  });
 }
 
 process.on('uncaughtException', (err) => {
@@ -414,11 +453,24 @@ app.whenReady().then(async () => {
   settingsStore = new SettingsStore(path.join(userData, 'settings.json'));
   await settingsStore.load();
   mdns = new MdnsAdvertiser();
+  updater = new AppUpdater({
+    repo: 'p4inz-code/beamdrop',
+    currentVersion: app.getVersion(),
+    downloadDir: path.join(app.getPath('temp'), 'BeamDropUpdates')
+  });
+  updater.on('status', (st) => sendToRenderer('event:updater-status', st));
+  updater.on('progress', (pr) => sendToRenderer('event:updater-progress', pr));
 
   await startServerFromSettings();
   registerIpc();
   createTray();
   await createWindow();
+
+  if (settingsStore.get().checkUpdatesOnStartup) {
+    setTimeout(() => {
+      updater.checkForUpdates().catch(() => {});
+    }, 3500);
+  }
 
   // 5-second shared-file & adapter sync (only pushes IPC when state actually changes)
   lastAdapterSig = getNetworkInterfaces().interfaces.map((i) => `${i.name}:${i.address}`).join('|');
@@ -449,6 +501,9 @@ app.on('before-quit', async () => {
   if (adapterWatchTimer) clearInterval(adapterWatchTimer);
   mdns?.stop();
   if (server) await server.stop();
+  if (updater?.pendingInstallOnQuit && updater.downloadedPath) {
+    await shell.openPath(updater.downloadedPath).catch(() => {});
+  }
 });
 
 app.on('window-all-closed', () => {

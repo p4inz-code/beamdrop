@@ -32,10 +32,18 @@ contextBridge.exposeInMainWorld('beamdrop', {
   pasteAndSendClipboard: () => ipcRenderer.invoke('app:paste-send-clipboard'),
   getDroppedFilePath: (file) => webUtils.getPathForFile(file),
 
+  checkUpdates: () => ipcRenderer.invoke('updater:check'),
+  downloadUpdate: () => ipcRenderer.invoke('updater:download'),
+  cancelUpdate: () => ipcRenderer.invoke('updater:cancel'),
+  installUpdateNow: () => ipcRenderer.invoke('updater:install-now'),
+  installUpdateOnQuit: () => ipcRenderer.invoke('updater:install-on-quit'),
+
   onStateChanged: (cb) => ipcRenderer.on('event:state', (_e, data) => cb(data)),
   onFilesChanged: (cb) => ipcRenderer.on('event:files', (_e, files) => cb(files)),
   onTransferUpdate: (cb) => ipcRenderer.on('event:transfer', (_e, transfer) => cb(transfer)),
   onAuthChallenge: (cb) => ipcRenderer.on('event:challenge', (_e, ch) => cb(ch)),
   onSessionsChanged: (cb) => ipcRenderer.on('event:sessions', (_e, sessions) => cb(sessions)),
-  onClipboardChanged: (cb) => ipcRenderer.on('event:clipboard', (_e, entries) => cb(entries))
+  onClipboardChanged: (cb) => ipcRenderer.on('event:clipboard', (_e, entries) => cb(entries)),
+  onUpdaterStatus: (cb) => ipcRenderer.on('event:updater-status', (_e, st) => cb(st)),
+  onUpdaterProgress: (cb) => ipcRenderer.on('event:updater-progress', (_e, pr) => cb(pr))
 });

@@ -385,6 +385,17 @@ $('btn-clear-search').addEventListener('click', () => {
   renderFiles(filesCache, true);
 });
 
+const TEXT_EXT_RE = /\.(txt|md|log|json|csv|ya?ml|xml|js|mjs|cjs|ts|py|css|html?|sh|ps1|ini|conf|env)$/i;
+
+function getFormatLabel(file) {
+  if (file.isDirectory) return 'FOLDER';
+  const dot = file.name.lastIndexOf('.');
+  if (dot > 0 && dot < file.name.length - 1) {
+    return file.name.slice(dot + 1).toUpperCase().slice(0, 6);
+  }
+  return 'FILE';
+}
+
 function renderFiles(files, force = false) {
   const sig = JSON.stringify(files);
   if (!force && sig === lastFilesSig) return; // zero-jitter refresh
@@ -404,22 +415,57 @@ function renderFiles(files, force = false) {
 
   if (filtered.length === 0) {
     const empty = document.createElement('div');
-    empty.className = 'muted';
-    empty.style.textAlign = 'center';
-    empty.style.padding = '32px 12px';
-    empty.textContent = files.length === 0 ? 'No files shared from PC yet.' : 'No files match this filter.';
+    empty.className = 'mobile-empty-card';
+    empty.appendChild(createSvgIcon(files.length === 0 ? 'folder' : 'file'));
+
+    const emptyTitle = document.createElement('div');
+    emptyTitle.className = 'mobile-empty-title';
+    emptyTitle.textContent = files.length === 0 ? 'No files shared from PC yet' : 'No files match this filter';
+    empty.appendChild(emptyTitle);
+
+    const emptySub = document.createElement('div');
+    emptySub.className = 'mobile-empty-sub';
+    emptySub.textContent = files.length === 0
+      ? 'Drop files onto BeamDrop on your PC, or tap below to send files from your phone.'
+      : 'Try clearing the search box or switching the category filter.';
+    empty.appendChild(emptySub);
+
+    if (files.length === 0) {
+      const sendShortcut = document.createElement('button');
+      sendShortcut.type = 'button';
+      sendShortcut.className = 'btn btn-primary btn-sm';
+      sendShortcut.textContent = 'Send Files to PC';
+      sendShortcut.addEventListener('click', () => {
+        const sendNav = document.querySelector('.nav-btn[data-tab="send"]');
+        if (sendNav) sendNav.click();
+      });
+      empty.appendChild(sendShortcut);
+    }
+
     list.appendChild(empty);
+    updateBatchBar();
     return;
   }
 
   const slice = filtered.slice(0, visibleLimit);
   for (const file of slice) {
     const card = document.createElement('div');
-    card.className = 'card-row';
+    card.className = 'media-card';
 
-    const top = document.createElement('div');
-    top.className = 'row-top';
+    const isVideo = !file.isDirectory && file.mimeType.startsWith('video/');
+    const isImage = !file.isDirectory && file.mimeType.startsWith('image/');
+    const isAudio = !file.isDirectory && file.mimeType.startsWith('audio/');
+    const isText = !file.isDirectory && (file.mimeType.startsWith('text/') || file.mimeType === 'application/json' || TEXT_EXT_RE.test(file.name));
+    const isNonNative = isVideo && /\.(mkv|avi|flv|ts)$/i.test(file.name);
+    const streamUrl = `/api/files/${encodeURIComponent(file.id)}/stream?token=${encodeURIComponent(authToken)}`;
+    const downloadUrl = `/api/files/${encodeURIComponent(file.id)}/download?token=${encodeURIComponent(authToken)}`;
 
+    const banner = document.createElement('div');
+    banner.className = 'media-banner';
+
+    const chkWrap = document.createElement('label');
+    chkWrap.className = 'media-chk-wrap';
+    chkWrap.addEventListener('click', (e) => e.stopPropagation());
     const chk = document.createElement('input');
     chk.type = 'checkbox';
     chk.className = 'custom-chk';
@@ -429,20 +475,71 @@ function renderFiles(files, force = false) {
       else selectedIds.delete(file.id);
       updateBatchBar();
     });
-    top.appendChild(chk);
+    chkWrap.appendChild(chk);
+    banner.appendChild(chkWrap);
 
-    if (!file.isDirectory && file.mimeType.startsWith('image/')) {
+    const fmtPill = document.createElement('span');
+    fmtPill.className = 'media-format-pill';
+    fmtPill.textContent = getFormatLabel(file);
+    banner.appendChild(fmtPill);
+
+    if (isImage) {
       const thumb = document.createElement('img');
-      thumb.className = 'thumb';
       thumb.loading = 'lazy';
-      thumb.src = `/api/files/${encodeURIComponent(file.id)}/stream?token=${encodeURIComponent(authToken)}`;
+      thumb.src = streamUrl;
       thumb.alt = file.name;
-      thumb.addEventListener('click', () => openImageModal(file));
-      top.appendChild(thumb);
+      banner.appendChild(thumb);
+      banner.addEventListener('click', () => openImageModal(file));
+    } else if (isVideo) {
+      if (!isNonNative) {
+        const vid = document.createElement('video');
+        vid.preload = 'metadata';
+        vid.muted = true;
+        vid.playsInline = true;
+        vid.src = `${streamUrl}#t=0.5`;
+        banner.appendChild(vid);
+      } else {
+        const holder = document.createElement('div');
+        holder.className = 'media-banner-placeholder';
+        holder.appendChild(createSvgIcon('video'));
+        banner.appendChild(holder);
+      }
+      const playBadge = document.createElement('div');
+      playBadge.className = 'media-play-badge';
+      const svgNS = 'http://www.w3.org/2000/svg';
+      const svg = document.createElementNS(svgNS, 'svg');
+      svg.setAttribute('viewBox', '0 0 24 24');
+      svg.setAttribute('fill', 'currentColor');
+      const poly = document.createElementNS(svgNS, 'polygon');
+      poly.setAttribute('points', '6 4 20 12 6 20 6 4');
+      svg.appendChild(poly);
+      playBadge.appendChild(svg);
+      banner.appendChild(playBadge);
+      banner.addEventListener('click', () => openVideoModal(file, isNonNative && ffmpegAvailable));
+    } else if (isAudio) {
+      const holder = document.createElement('div');
+      holder.className = 'media-banner-placeholder';
+      holder.appendChild(createSvgIcon('file'));
+      banner.appendChild(holder);
+      banner.addEventListener('click', () => openAudioModal(file));
+    } else if (isText) {
+      const holder = document.createElement('div');
+      holder.className = 'media-banner-placeholder';
+      holder.appendChild(createSvgIcon('file'));
+      banner.appendChild(holder);
+      banner.addEventListener('click', () => openTextModal(file));
     } else {
-      const kind = file.isDirectory ? 'folder' : file.mimeType.startsWith('video/') ? 'video' : 'file';
-      top.appendChild(createSvgIcon(kind));
+      const holder = document.createElement('div');
+      holder.className = 'media-banner-placeholder';
+      holder.appendChild(createSvgIcon(file.isDirectory ? 'folder' : 'file'));
+      banner.appendChild(holder);
+      banner.addEventListener('click', () => {
+        location.href = downloadUrl;
+      });
     }
+
+    const body = document.createElement('div');
+    body.className = 'media-card-body';
 
     const info = document.createElement('div');
     info.className = 'row-info';
@@ -453,55 +550,62 @@ function renderFiles(files, force = false) {
 
     const sub = document.createElement('div');
     sub.className = 'row-sub';
-    sub.textContent = file.isDirectory ? 'Folder (.zip)' : formatBytes(file.size);
+    sub.textContent = file.isDirectory
+      ? 'FOLDER · .ZIP Archive'
+      : `${getFormatLabel(file)} · ${formatBytes(file.size)}`;
 
     info.appendChild(title);
     info.appendChild(sub);
-    top.appendChild(info);
 
     const actions = document.createElement('div');
     actions.className = 'row-actions';
 
-    if (!file.isDirectory && file.mimeType.startsWith('video/')) {
-      const isNonNative = /\.(mkv|avi|flv|ts)$/i.test(file.name);
-      if (isNonNative && ffmpegAvailable) {
-        const remuxBtn = document.createElement('button');
-        remuxBtn.className = 'btn btn-primary btn-sm';
-        remuxBtn.textContent = 'Play Video';
-        remuxBtn.addEventListener('click', () => openVideoModal(file, true));
-        actions.appendChild(remuxBtn);
-      } else {
-        const playBtn = document.createElement('button');
-        playBtn.className = 'btn btn-primary btn-sm';
-        playBtn.textContent = 'Play Video';
-        playBtn.addEventListener('click', () => openVideoModal(file, false));
-        actions.appendChild(playBtn);
-      }
+    if (isVideo) {
+      const playBtn = document.createElement('button');
+      playBtn.className = 'btn btn-primary btn-sm';
+      playBtn.textContent = 'Play Video';
+      playBtn.addEventListener('click', () => openVideoModal(file, isNonNative && ffmpegAvailable));
+      actions.appendChild(playBtn);
 
       if (isNonNative) {
         const vlcLink = document.createElement('a');
         vlcLink.className = 'btn btn-sm';
-        vlcLink.href = `vlc://${location.origin}/api/files/${encodeURIComponent(file.id)}/stream?token=${encodeURIComponent(authToken)}`;
+        vlcLink.href = `vlc://${location.origin}${streamUrl}`;
         vlcLink.textContent = 'Open in VLC';
         actions.appendChild(vlcLink);
       }
-    } else if (!file.isDirectory && file.mimeType.startsWith('image/')) {
+    } else if (isImage) {
       const previewBtn = document.createElement('button');
       previewBtn.className = 'btn btn-primary btn-sm';
-      previewBtn.textContent = 'View';
+      previewBtn.textContent = 'View Image';
       previewBtn.addEventListener('click', () => openImageModal(file));
       actions.appendChild(previewBtn);
+    } else if (isAudio) {
+      const audioBtn = document.createElement('button');
+      audioBtn.className = 'btn btn-primary btn-sm';
+      audioBtn.textContent = 'Listen';
+      audioBtn.addEventListener('click', () => openAudioModal(file));
+      actions.appendChild(audioBtn);
+    } else if (isText) {
+      const readBtn = document.createElement('button');
+      readBtn.className = 'btn btn-primary btn-sm';
+      readBtn.textContent = 'Read';
+      readBtn.addEventListener('click', () => openTextModal(file));
+      actions.appendChild(readBtn);
     }
 
     const dlLink = document.createElement('a');
-    dlLink.className = 'btn btn-sm';
-    dlLink.href = `/api/files/${encodeURIComponent(file.id)}/download?token=${encodeURIComponent(authToken)}`;
+    dlLink.className = isVideo || isImage || isAudio || isText ? 'btn btn-sm' : 'btn btn-primary btn-sm';
+    dlLink.href = downloadUrl;
     dlLink.setAttribute('download', file.isDirectory ? `${file.name}.zip` : file.name);
     dlLink.textContent = file.isDirectory ? 'Download .ZIP' : 'Download';
     actions.appendChild(dlLink);
 
-    card.appendChild(top);
-    card.appendChild(actions);
+    body.appendChild(info);
+    body.appendChild(actions);
+
+    card.appendChild(banner);
+    card.appendChild(body);
     list.appendChild(card);
   }
   if (filtered.length > visibleLimit) {
@@ -568,6 +672,40 @@ function openImageModal(file) {
 $('btn-close-image').addEventListener('click', () => {
   $('image-preview').removeAttribute('src');
   $('image-modal').classList.add('hidden');
+});
+
+function openAudioModal(file) {
+  $('audio-title').textContent = file.name;
+  $('audio-player').src = `/api/files/${encodeURIComponent(file.id)}/stream?token=${encodeURIComponent(authToken)}`;
+  $('audio-modal').classList.remove('hidden');
+}
+
+$('btn-close-audio').addEventListener('click', () => {
+  const player = $('audio-player');
+  player.pause();
+  player.removeAttribute('src');
+  player.load();
+  $('audio-modal').classList.add('hidden');
+});
+
+async function openTextModal(file) {
+  $('text-title').textContent = file.name;
+  $('text-preview').textContent = 'Loading preview...';
+  $('text-modal').classList.remove('hidden');
+  try {
+    const res = await fetch(`/api/files/${encodeURIComponent(file.id)}/stream?token=${encodeURIComponent(authToken)}`, {
+      headers: { Range: 'bytes=0-524287' }
+    });
+    const txt = await res.text();
+    $('text-preview').textContent = file.size > 524288 ? `${txt}\n\n... (preview capped at 512 KB)` : txt;
+  } catch {
+    $('text-preview').textContent = 'Could not load text preview.';
+  }
+}
+
+$('btn-close-text').addEventListener('click', () => {
+  $('text-preview').textContent = '';
+  $('text-modal').classList.add('hidden');
 });
 
 // Chunked Upload Engine (3x parallel + resume)

@@ -15,7 +15,9 @@ const DEFAULT_SETTINGS = {
   launchAtLogin: false,
   maxConcurrentTransfers: 2,
   ffmpegRemux: false,
-  verifySha256: false
+  verifySha256: false,
+  checkUpdatesOnStartup: true,
+  windowBounds: { width: 1240, height: 820 }
 };
 
 function sanitizeSettings(raw = {}, fallbackSaveDir = DEFAULT_SETTINGS.saveDir) {
@@ -30,6 +32,13 @@ function sanitizeSettings(raw = {}, fallbackSaveDir = DEFAULT_SETTINGS.saveDir) 
   const saveDir = rawDir ? path.resolve(rawDir) : fallbackSaveDir;
   const theme = r.theme === 'light' ? 'light' : 'dark';
 
+  const wb = r.windowBounds && typeof r.windowBounds === 'object' ? r.windowBounds : {};
+  const w = Number.isInteger(Number(wb.width)) && Number(wb.width) >= 900 ? Number(wb.width) : 1240;
+  const h = Number.isInteger(Number(wb.height)) && Number(wb.height) >= 640 ? Number(wb.height) : 820;
+  const windowBounds = { width: w, height: h };
+  if (Number.isInteger(Number(wb.x))) windowBounds.x = Number(wb.x);
+  if (Number.isInteger(Number(wb.y))) windowBounds.y = Number(wb.y);
+
   return {
     port,
     saveDir,
@@ -40,7 +49,9 @@ function sanitizeSettings(raw = {}, fallbackSaveDir = DEFAULT_SETTINGS.saveDir) 
     launchAtLogin: Boolean(r.launchAtLogin),
     maxConcurrentTransfers,
     ffmpegRemux: Boolean(r.ffmpegRemux),
-    verifySha256: Boolean(r.verifySha256)
+    verifySha256: Boolean(r.verifySha256),
+    checkUpdatesOnStartup: typeof r.checkUpdatesOnStartup === 'boolean' ? r.checkUpdatesOnStartup : true,
+    windowBounds
   };
 }
 
