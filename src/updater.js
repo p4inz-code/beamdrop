@@ -72,6 +72,9 @@ function fetchText(url, maxRedirects = 5) {
       (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && maxRedirects > 0) {
           res.resume();
+          if (!/^https:\/\//i.test(res.headers.location)) {
+            return reject(new Error('Blocked non-HTTPS redirect'));
+          }
           return resolve(fetchText(res.headers.location, maxRedirects - 1));
         }
         if (res.statusCode !== 200) {
@@ -79,7 +82,15 @@ function fetchText(url, maxRedirects = 5) {
           return reject(new Error(`HTTP ${res.statusCode}`));
         }
         const chunks = [];
-        res.on('data', (d) => chunks.push(d));
+        let total = 0;
+        res.on('data', (d) => {
+          total += d.length;
+          if (total > 2 * 1024 * 1024) {
+            req.destroy();
+            return reject(new Error('Response exceeds 2 MB limit'));
+          }
+          chunks.push(d);
+        });
         res.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
       }
     );
@@ -165,6 +176,9 @@ class AppUpdater extends EventEmitter {
           (res) => {
             if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirects > 0) {
               res.resume();
+              if (!/^https:\/\//i.test(res.headers.location)) {
+                return reject(new Error('Blocked non-HTTPS redirect'));
+              }
               return resolve(downloadStream(res.headers.location, redirects - 1));
             }
             if (res.statusCode !== 200) {

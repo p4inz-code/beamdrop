@@ -1045,13 +1045,13 @@ class BeamDropServer extends EventEmitter {
     let targetPath = null;
     let isSrt = false;
     try {
-      const stVtt = await fsp.stat(vttPath);
-      if (stVtt.isFile() && stVtt.size <= 2 * 1024 * 1024) targetPath = vttPath;
+      const stVtt = await fsp.lstat(vttPath);
+      if (!stVtt.isSymbolicLink() && stVtt.isFile() && stVtt.size <= 2 * 1024 * 1024) targetPath = vttPath;
     } catch {}
     if (!targetPath) {
       try {
-        const stSrt = await fsp.stat(srtPath);
-        if (stSrt.isFile() && stSrt.size <= 2 * 1024 * 1024) {
+        const stSrt = await fsp.lstat(srtPath);
+        if (!stSrt.isSymbolicLink() && stSrt.isFile() && stSrt.size <= 2 * 1024 * 1024) {
           targetPath = srtPath;
           isSrt = true;
         }
