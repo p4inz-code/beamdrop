@@ -4,11 +4,11 @@
       <stop offset="0%" stop-color="#1a1a20"/>
       <stop offset="100%" stop-color="#0b0b0e"/>
     </linearGradient>
-    <linearGradient id="beamBlue" x1="0" y1="0" x2="0" y2="1">
+    <linearGradient id="beamBlue" gradientUnits="userSpaceOnUse" x1="334" y1="164" x2="334" y2="348">
       <stop offset="0%" stop-color="#60a5fa"/>
       <stop offset="100%" stop-color="#2563eb"/>
     </linearGradient>
-    <linearGradient id="beamWhite" x1="0" y1="0" x2="0" y2="1">
+    <linearGradient id="beamWhite" gradientUnits="userSpaceOnUse" x1="178" y1="164" x2="178" y2="348">
       <stop offset="0%" stop-color="#ffffff"/>
       <stop offset="100%" stop-color="#d4d4d8"/>
     </linearGradient>
