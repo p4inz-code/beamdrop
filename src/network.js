@@ -30,12 +30,21 @@ const VIRTUAL_KEYWORDS = [
 
 const VPN_KEYWORDS = ['tailscale', 'zerotier', 'wireguard', 'nordlynx', 'proton', 'warp', 'openvpn', 'tun', 'tap'];
 const WIFI_KEYWORDS = ['wi-fi', 'wifi', 'wlan', 'wireless', 'hotspot', 'local area connection*'];
+const USB_TETHER_KEYWORDS = ['rndis', 'usb', 'android', 'apple mobile device', 'remote ndis'];
+
+function isUsbTetherInterface(name, address) {
+  const lower = name.toLowerCase();
+  if (USB_TETHER_KEYWORDS.some((kw) => lower.includes(kw))) return true;
+  if (address.startsWith('192.168.42.') || address.startsWith('172.20.10.')) return true;
+  return false;
+}
 
 function scoreInterface(name, address) {
   const lower = name.toLowerCase();
   if (VIRTUAL_KEYWORDS.some((kw) => lower.includes(kw))) return -100;
 
   let score = 0;
+  if (isUsbTetherInterface(name, address)) score += 75;
   if (WIFI_KEYWORDS.some((kw) => lower.includes(kw))) score += 50;
   if (lower.includes('ethernet')) score += 30;
 
@@ -63,6 +72,7 @@ function getNetworkInterfaces() {
         list.push({
           name,
           address: info.address,
+          isUsbTether: isUsbTetherInterface(name, info.address),
           score: scoreInterface(name, info.address)
         });
       }

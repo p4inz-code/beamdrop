@@ -52,12 +52,13 @@ Every release includes `SHA256SUMS-*.txt` so you (and the built-in updater) can 
 
 ## What it does
 
-- **Built for huge videos (up to 64 GB per file)**: Zero-copy 8 MB chunk buffers, `1 MB` disk read/write streams, and 4x parallel mobile upload workers keep memory flat (~40–60 MB) while saturating Wi-Fi 5/6 speeds.
-- **In-app media viewer on both PC and phone**: Preview **Videos** (MP4, MOV, WebM, plus optional FFmpeg remux or `Open in VLC` for MKV/AVI), **Images**, **Audio** (MP3, WAV, FLAC, M4A, OGG), and **Text / Code / Logs** (`.txt`, `.md`, `.json`, `.csv`, `.log`) without leaving the app.
+- **Built for huge videos (up to 64 GB per file)**: Zero-copy 8 MB chunk buffers, `1 MB` disk read/write streams, and 4x parallel mobile upload workers keep memory flat (~40–60 MB) while saturating Wi-Fi 5/6 or USB tethering speeds.
+- **In-app media viewer on both PC and phone**: Preview **Videos** (MP4, MOV, WebM with automatic `.srt`/`.vtt` subtitle attach, plus optional FFmpeg remux or `Open in VLC`), **Images**, **Audio** (MP3, WAV, FLAC, M4A, OGG), and **Text / Code / Logs** (`.txt`, `.md`, `.json`, `.csv`, `.log`) without leaving the app.
+- **1-to-64 Multi-Device Room Mode**: Turn on **Room Mode** under **Connect** so up to **64** phones or laptops can join with the rotating 4-digit PIN and download files or batch `.zip` archives simultaneously.
 - **Zero-CPU Folder `.ZIP` downloads**: Select any folder or batch of files and download them as a single `.zip` streamed in `STORE` mode (`level: 0`) so your CPU stays idle.
-- **Works even on strict Wi-Fi**: Includes 1-click **Fix Firewall** and **Hotspot** tools under **Connect**, automatic network adapter watching, and `beamdrop.local` mDNS discovery.
+- **Works on strict Wi-Fi & USB Tethering**: Automatically prioritizes Gigabit USB tethering adapters, surfaces an inline **Fix Firewall** / **Hotspot** banner if LAN access is blocked, and advertises `beamdrop.local` via mDNS.
 - **Two-way Text & Links**: Press `Enter` on PC or phone to send links, notes, or snippets back and forth immediately.
-- **Private by design**: Rotating 128-bit QR secret, rate-limited 4-digit PIN, explicit PC **Allow / Block** prompt, `User-Agent`-bound tokens, optional local HTTPS (`TLSv1.2+`), and zero telemetry. See [PRIVACY.md](PRIVACY.md) and [AUDIT_REPORT.md](AUDIT_REPORT.md).
+- **Private by design**: Rotating 128-bit QR secret, rate-limited 4-digit PIN, explicit PC **Allow / Block** prompt, `User-Agent`-bound tokens, optional local HTTPS (`TLSv1.2+`), **Clear on Quit**, and zero telemetry. See [PRIVACY.md](PRIVACY.md) and [AUDIT_REPORT.md](AUDIT_REPORT.md).
 
 ---
 

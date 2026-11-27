@@ -93,7 +93,9 @@ async function buildAppState() {
     vpnNames: net.vpnNames,
     ffmpegAvailable: server.ffmpegAvailable,
     settings,
+    platform: process.platform,
     requireApproval: server.requireApproval,
+    roomMode: server.roomMode,
     saveDir: server.saveDir,
     interfaces: net.interfaces,
     selectedAddress: activeAddr,
@@ -206,7 +208,8 @@ async function startServerFromSettings() {
     tlsOptions,
     logger,
     ffmpegRemux: settings.ffmpegRemux,
-    requireApproval: settings.requireApproval
+    requireApproval: settings.requireApproval,
+    roomMode: settings.roomMode
   });
 
   server.on('files:changed', (files) => sendToRenderer('event:files', files));
@@ -277,6 +280,14 @@ function registerIpc() {
   ipcMain.handle('app:set-approval', async (_e, enabled) => {
     server.setRequireApproval(enabled);
     await settingsStore.update({ requireApproval: Boolean(enabled) });
+    const state = await buildAppState();
+    sendToRenderer('event:state', state);
+    return state;
+  });
+
+  ipcMain.handle('app:set-room-mode', async (_e, enabled) => {
+    server.setRoomMode(enabled);
+    await settingsStore.update({ roomMode: Boolean(enabled) });
     const state = await buildAppState();
     sendToRenderer('event:state', state);
     return state;
@@ -445,7 +456,39 @@ app.on('web-contents-created', (_e, contents) => {
   contents.on('will-attach-webview', (ev) => ev.preventDefault());
 });
 
+function extractCliFilePaths(argv = []) {
+  const results = [];
+  const appPath = path.resolve(app.getAppPath());
+  for (const raw of argv.slice(1)) {
+    if (!raw || raw.startsWith('-') || raw === '.') continue;
+    const resolved = path.resolve(raw);
+    if (resolved === appPath || resolved === path.resolve(process.execPath)) continue;
+    if (fs.existsSync(resolved)) results.push(resolved);
+  }
+  return results;
+}
+
+const gotSingleInstanceLock =
+  process.env.BEAMDROP_PORT !== undefined ? true : app.requestSingleInstanceLock();
+
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', async (_event, argv) => {
+    const cliPaths = extractCliFilePaths(argv);
+    if (cliPaths.length > 0 && server) {
+      await server.addSharedPaths(cliPaths, 'pc').catch(() => {});
+    }
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+}
+
 app.whenReady().then(async () => {
+  if (!gotSingleInstanceLock) return;
   const userData = app.getPath('userData');
   logger = new DiagnosticsLogger(path.join(userData, 'logs'));
   await logger.init();
@@ -462,6 +505,10 @@ app.whenReady().then(async () => {
   updater.on('progress', (pr) => sendToRenderer('event:updater-progress', pr));
 
   await startServerFromSettings();
+  const initialPaths = extractCliFilePaths(process.argv);
+  if (initialPaths.length > 0) {
+    await server.addSharedPaths(initialPaths, 'pc').catch(() => {});
+  }
   registerIpc();
   createTray();
   await createWindow();
@@ -500,6 +547,9 @@ app.on('before-quit', async () => {
   isQuitting = true;
   if (adapterWatchTimer) clearInterval(adapterWatchTimer);
   mdns?.stop();
+  if (settingsStore?.get().clearOnQuit && server) {
+    server.clearSharedItems();
+  }
   if (server) await server.stop();
   if (updater?.pendingInstallOnQuit && updater.downloadedPath) {
     await shell.openPath(updater.downloadedPath).catch(() => {});

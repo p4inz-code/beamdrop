@@ -3,6 +3,13 @@
   "short_name": "BeamDrop",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0b0f19",
-  "theme_color": "#0b0f19"
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
 }

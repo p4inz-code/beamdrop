@@ -1,6 +1,6 @@
 {
   "name": "beamdrop",
-  "version": "1.4.2",
+  "version": "1.5.0",
   "description": "Zero-cloud, FDM-minimal local Wi-Fi file & 2GB+ video transfer app for PC and mobile.",
   "main": "src/main.js",
   "scripts": {
@@ -75,6 +75,7 @@
   "devDependencies": {
     "electron": "^35.0.0",
     "electron-builder": "^26.18.0",
+    "lucide-static": "^1.82.0",
     "playwright-core": "^1.65.1"
   }
 }

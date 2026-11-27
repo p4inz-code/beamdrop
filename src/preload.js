@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('beamdrop', {
   selectInterface: (address) => ipcRenderer.invoke('app:select-interface', address),
   regeneratePin: () => ipcRenderer.invoke('app:regenerate-pin'),
   setRequireApproval: (enabled) => ipcRenderer.invoke('app:set-approval', enabled),
+  setRoomMode: (enabled) => ipcRenderer.invoke('app:set-room-mode', enabled),
   updateSettings: (patch) => ipcRenderer.invoke('app:update-settings', patch),
   approveChallenge: (challengeId, allow, trust = false) => ipcRenderer.invoke('app:approve-challenge', { challengeId, allow, trust }),
   revokeSessions: () => ipcRenderer.invoke('app:revoke-sessions'),

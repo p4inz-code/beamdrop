@@ -2,6 +2,16 @@
 
 All notable changes to **BeamDrop** are documented in this file.
 
+## [1.5.0] - 2026-11-27
+
+### Setup, Bridge & Media
+- **Inline Firewall & Network Health Banner**: Automatically surfaces a 1-click **Fix Firewall** / **Hotspot** prompt when the local LAN probe detects blocked ports.
+- **Room / Event Mode (`64` Devices)**: Increased concurrent session limit from 32 to **64**, with an optional **Room Mode (PIN auto-accept)** toggle under **Connect**.
+- **USB Tethering Priority (`src/network.js`)**: Automatically ranks Android/iPhone USB-tethered adapters (`192.168.42.x`, `172.20.10.x`, RNDIS) above Wi-Fi for Gigabit wired browser transfers.
+- **Subtitle Auto-Attach (`.srt` / `.vtt`)**: Automatically pairs matching `.vtt` or `.srt` files next to shared videos, converts `.srt` to WebVTT on the fly, and attaches them in both PC and Mobile players.
+- **Clear Shared List on Quit & Single-Instance Open-With**: Added `clearOnQuit` in Settings and `second-instance` CLI/file argument handling so launching with file paths adds them directly to the running window.
+- **Official Lucide Icons & Linear Motion**: Replaced all inline UI icons with official ISC/MIT Lucide SVGs (`stroke-linecap="round"`), fixed the Help/About `?` dot, added subtle linear UI animations, and tracked `build/icon.png` + `build/icon.svg`.
+
 ## [1.4.2] - 2026-11-27
 
 ### Interface & In-App Viewers

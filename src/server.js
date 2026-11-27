@@ -138,7 +138,7 @@ function computeFileSha256(filePath) {
 const MAX_CONCURRENT_UPLOADS = 16;
 const MAX_PENDING_CHALLENGES = 50;
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
-const MAX_ACTIVE_SESSIONS = 32;
+const MAX_ACTIVE_SESSIONS = 64;
 
 class BeamDropServer extends EventEmitter {
   constructor(options = {}) {
@@ -154,6 +154,7 @@ class BeamDropServer extends EventEmitter {
     this.ffmpegAvailable = false;
     this.maxFileSize = options.maxFileSize ?? 64 * 1024 * 1024 * 1024; // 64 GB
     this.requireApproval = options.requireApproval ?? true;
+    this.roomMode = Boolean(options.roomMode);
 
     this.pin = options.pin || generatePin();
     this.qrSecret = crypto.randomBytes(16).toString('hex');
@@ -263,6 +264,11 @@ class BeamDropServer extends EventEmitter {
 
   setRequireApproval(enabled) {
     this.requireApproval = Boolean(enabled);
+    this.emit('state:changed');
+  }
+
+  setRoomMode(enabled) {
+    this.roomMode = Boolean(enabled);
     this.emit('state:changed');
   }
 
@@ -492,7 +498,7 @@ class BeamDropServer extends EventEmitter {
       const ip = req.socket?.remoteAddress || '';
       const isLoopback = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
       const reqUrl = (req.url || '').split('?')[0];
-      if (!isLoopback || req.method !== 'GET' || !/^\/api\/files\/[^/]+\/stream$/.test(reqUrl)) {
+      if (!isLoopback || req.method !== 'GET' || !/^\/api\/files\/[^/]+\/(stream|subtitles)$/.test(reqUrl)) {
         return null;
       }
       return { id: 'local-pc', token, deviceName: 'PC Preview', ip: '127.0.0.1' };
@@ -587,6 +593,9 @@ class BeamDropServer extends EventEmitter {
       if (req.method === 'GET' && pathname === '/manifest.json') {
         return this.serveStatic(res, path.join(this.mobileDir, 'manifest.json'), 'application/json; charset=utf-8');
       }
+      if (req.method === 'GET' && pathname === '/icon.png') {
+        return this.serveStatic(res, path.join(__dirname, '..', 'build', 'icon.png'), 'image/png');
+      }
 
       // Public Auth endpoints
       if (req.method === 'POST' && pathname === '/api/auth/pair') {
@@ -619,11 +628,14 @@ class BeamDropServer extends EventEmitter {
         return sendJson(res, 200, { files: this.getPublicFileList() });
       }
 
-      const fileMatch = pathname.match(/^\/api\/files\/([a-zA-Z0-9-]+)\/(stream|download|remux)$/);
+      const fileMatch = pathname.match(/^\/api\/files\/([a-zA-Z0-9-]+)\/(stream|download|remux|subtitles)$/);
       if (req.method === 'GET' && fileMatch) {
         const [, id, mode] = fileMatch;
         if (mode === 'remux') {
           return await this.handleFileRemux(req, res, id);
+        }
+        if (mode === 'subtitles') {
+          return await this.handleFileSubtitles(req, res, id);
         }
         return await this.handleFileTransfer(req, res, id, mode, session);
       }
@@ -748,7 +760,11 @@ class BeamDropServer extends EventEmitter {
 
     this.rateLimiter.recordSuccess(remoteIp);
 
-    if (!this.requireApproval) {
+    if (!this.requireApproval || this.roomMode) {
+      if (this.sessions.size >= MAX_ACTIVE_SESSIONS) {
+        const oldestKey = this.sessions.keys().next().value;
+        if (oldestKey) this.sessions.delete(oldestKey);
+      }
       const token = generateToken();
       const sessionId = crypto.randomUUID();
       this.sessions.set(token, { id: sessionId, token, uaHash: this.getUaHash(req), deviceName, ip: remoteIp, createdAt: Date.now() });
@@ -950,6 +966,51 @@ class BeamDropServer extends EventEmitter {
       totalSize,
       trackDownload: false
     });
+  }
+
+  srtToVtt(srt) {
+    const clean = String(srt || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
+    const converted = clean.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
+    return `WEBVTT\n\n${converted}\n`;
+  }
+
+  async handleFileSubtitles(req, res, id) {
+    const item = this.sharedItems.get(id);
+    if (!item || item.isDirectory) return sendJson(res, 404, { error: 'File not found' });
+
+    const dir = path.dirname(item.filePath);
+    const stem = path.basename(item.filePath, path.extname(item.filePath));
+    const vttPath = path.join(dir, `${stem}.vtt`);
+    const srtPath = path.join(dir, `${stem}.srt`);
+
+    let targetPath = null;
+    let isSrt = false;
+    try {
+      const stVtt = await fsp.stat(vttPath);
+      if (stVtt.isFile() && stVtt.size <= 2 * 1024 * 1024) targetPath = vttPath;
+    } catch {}
+    if (!targetPath) {
+      try {
+        const stSrt = await fsp.stat(srtPath);
+        if (stSrt.isFile() && stSrt.size <= 2 * 1024 * 1024) {
+          targetPath = srtPath;
+          isSrt = true;
+        }
+      } catch {}
+    }
+
+    if (!targetPath) {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end('No subtitles found');
+    }
+
+    const raw = await fsp.readFile(targetPath, 'utf8');
+    const body = isSrt ? this.srtToVtt(raw) : raw;
+    res.writeHead(200, {
+      'Content-Type': 'text/vtt; charset=utf-8',
+      'Cache-Control': 'no-store'
+    });
+    return res.end(body);
   }
 
   async handleFileRemux(req, res, id) {

@@ -1,7 +1,9 @@
 node_modules/
 .beamdrop_tmp/
 dist/
-build/
+build/*
+!build/icon.png
+!build/icon.svg
 *.log
 .DS_Store
 Thumbs.db

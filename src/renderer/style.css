@@ -1284,4 +1284,98 @@ body.window-drag .drop-bar {
   padding: 8px 14px;
   font-size: 12px;
   z-index: 100;
+  animation: toastSlideIn 140ms linear;
+}
+
+/* Linear & Subtle Motion System */
+.btn,
+.win-btn,
+.nav-item,
+.rail-btn,
+.pill,
+.seg-btn,
+.stepper-btn,
+.dropdown-trigger,
+.custom-chk {
+  transition: background-color 120ms linear, border-color 120ms linear, color 120ms linear, transform 90ms linear, opacity 120ms linear;
+}
+
+.btn:active:not(:disabled),
+.win-btn:active:not(:disabled),
+.nav-item:active:not(:disabled),
+.rail-btn:active:not(:disabled),
+.pill:active:not(:disabled),
+.seg-btn:active:not(:disabled),
+.stepper-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.nav-item svg,
+.rail-btn svg,
+.win-btn svg {
+  transition: transform 140ms linear, color 120ms linear;
+}
+
+.nav-item:hover svg,
+.rail-btn:hover svg,
+.win-btn:hover svg {
+  transform: scale(1.06);
+}
+
+.gallery-card,
+.item-row {
+  transition: border-color 140ms linear, background-color 140ms linear, transform 140ms linear;
+}
+
+.gallery-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.gallery-thumb-box img {
+  transition: transform 200ms linear;
+}
+
+.gallery-card:hover .gallery-thumb-box img {
+  transform: scale(1.02);
+}
+
+.view-panel.active {
+  animation: viewEnter 150ms linear;
+}
+
+.modal:not(.hidden) .modal-card {
+  animation: modalEnter 150ms linear;
+}
+
+.status-dot {
+  animation: dotPulse 2.4s linear infinite;
+}
+
+@keyframes viewEnter {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes modalEnter {
+  from { opacity: 0; transform: scale(0.985) translateY(4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes toastSlideIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes dotPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

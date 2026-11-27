@@ -10,5 +10,6 @@
 | `selfsigned` | Local self-signed TLS certificate generation | MIT |
 | `ws` | WebSocket server for live sync | MIT |
 | `electron` | Cross-platform desktop runtime | MIT |
+| `lucide-static` | UI SVG icons (ISC / MIT-derived Feather icons) | ISC / MIT |
 
 All original BeamDrop source code is licensed under **GNU GPL-3.0-or-later**. See [LICENSE](LICENSE) and [NOTICE](NOTICE).

@@ -47,22 +47,38 @@ function isEmbeddedWebView() {
 }
 
 function createSvgIcon(kind) {
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('fill', 'none');
   svg.setAttribute('stroke', 'currentColor');
-  svg.setAttribute('stroke-width', '1.75');
+  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
   svg.setAttribute('class', 'item-icon');
 
-  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  const add = (tag, attrs) => {
+    const el = document.createElementNS(svgNS, tag);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
+    svg.appendChild(el);
+  };
+
   if (kind === 'folder') {
-    path.setAttribute('d', 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z');
+    add('path', { d: 'M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z' });
   } else if (kind === 'video') {
-    path.setAttribute('d', 'M15 10l4.55-2.28A1 1 0 0 1 21 8.62v6.76a1 1 0 0 1-1.45.9L15 14v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2z');
+    add('path', { d: 'm16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5' });
+    add('rect', { x: 2, y: 6, width: 14, height: 12, rx: 2 });
+  } else if (kind === 'audio') {
+    add('path', { d: 'M21 16V3a1 1 0 0 0-1.28-.96l-10 2.917a1 1 0 0 0-.72.96V19' });
+    add('circle', { cx: 18, cy: 16, r: 3 });
+    add('circle', { cx: 6, cy: 19, r: 3 });
   } else {
-    path.setAttribute('d', 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z');
+    add('path', { d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z' });
+    add('path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' });
+    add('path', { d: 'M10 9H8' });
+    add('path', { d: 'M16 13H8' });
+    add('path', { d: 'M16 17H8' });
   }
-  svg.appendChild(path);
   return svg;
 }
 
@@ -510,16 +526,20 @@ function renderFiles(files, force = false) {
       const svg = document.createElementNS(svgNS, 'svg');
       svg.setAttribute('viewBox', '0 0 24 24');
       svg.setAttribute('fill', 'currentColor');
-      const poly = document.createElementNS(svgNS, 'polygon');
-      poly.setAttribute('points', '6 4 20 12 6 20 6 4');
-      svg.appendChild(poly);
+      svg.setAttribute('stroke', 'currentColor');
+      svg.setAttribute('stroke-width', '2');
+      svg.setAttribute('stroke-linecap', 'round');
+      svg.setAttribute('stroke-linejoin', 'round');
+      const playPath = document.createElementNS(svgNS, 'path');
+      playPath.setAttribute('d', 'M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z');
+      svg.appendChild(playPath);
       playBadge.appendChild(svg);
       banner.appendChild(playBadge);
       banner.addEventListener('click', () => openVideoModal(file, isNonNative && ffmpegAvailable));
     } else if (isAudio) {
       const holder = document.createElement('div');
       holder.className = 'media-banner-placeholder';
-      holder.appendChild(createSvgIcon('file'));
+      holder.appendChild(createSvgIcon('audio'));
       banner.appendChild(holder);
       banner.addEventListener('click', () => openAudioModal(file));
     } else if (isText) {
@@ -650,14 +670,24 @@ $('btn-download-zip').addEventListener('click', () => {
 // Video & Image Modals
 function openVideoModal(file, useRemux = false) {
   $('video-title').textContent = file.name;
+  const player = $('video-player');
+  player.querySelectorAll('track').forEach((t) => t.remove());
   const ep = useRemux ? 'remux' : 'stream';
-  $('video-player').src = `/api/files/${encodeURIComponent(file.id)}/${ep}?token=${encodeURIComponent(authToken)}`;
+  player.src = `/api/files/${encodeURIComponent(file.id)}/${ep}?token=${encodeURIComponent(authToken)}`;
+  const track = document.createElement('track');
+  track.kind = 'subtitles';
+  track.srclang = 'en';
+  track.label = 'Subtitles';
+  track.default = true;
+  track.src = `/api/files/${encodeURIComponent(file.id)}/subtitles?token=${encodeURIComponent(authToken)}`;
+  player.appendChild(track);
   $('video-modal').classList.remove('hidden');
 }
 
 $('btn-close-video').addEventListener('click', () => {
   const player = $('video-player');
   player.pause();
+  player.querySelectorAll('track').forEach((t) => t.remove());
   player.removeAttribute('src');
   player.load();
   $('video-modal').classList.add('hidden');

@@ -17,6 +17,8 @@ const DEFAULT_SETTINGS = {
   ffmpegRemux: false,
   verifySha256: false,
   checkUpdatesOnStartup: true,
+  roomMode: false,
+  clearOnQuit: false,
   windowBounds: { width: 1240, height: 820 }
 };
 
@@ -51,6 +53,8 @@ function sanitizeSettings(raw = {}, fallbackSaveDir = DEFAULT_SETTINGS.saveDir) 
     ffmpegRemux: Boolean(r.ffmpegRemux),
     verifySha256: Boolean(r.verifySha256),
     checkUpdatesOnStartup: typeof r.checkUpdatesOnStartup === 'boolean' ? r.checkUpdatesOnStartup : true,
+    roomMode: Boolean(r.roomMode),
+    clearOnQuit: Boolean(r.clearOnQuit),
     windowBounds
   };
 }

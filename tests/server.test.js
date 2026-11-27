@@ -696,4 +696,60 @@ test('AppUpdater semver comparison, asset selection, SHA-256 parsing, and Settin
   const s2 = sanitizeSettings({ windowBounds: { width: 100, height: 100 } }, 'C:\\Save');
   assert.equal(s2.windowBounds.width, 1240);
   assert.equal(s2.windowBounds.height, 820);
+
+  const s3 = sanitizeSettings({ roomMode: true, clearOnQuit: true }, 'C:\\Save');
+  assert.equal(s3.roomMode, true);
+  assert.equal(s3.clearOnQuit, true);
+});
+
+test('v1.5.0: Room Mode auto-approve, SRT-to-VTT subtitle endpoint, and USB tethering priority', async (t) => {
+  const { BeamDropServer } = require('../src/server');
+  const { scoreInterface } = require('../src/network');
+
+  // 1. USB tethering priority over Wi-Fi & VPNs
+  const usbScore = scoreInterface('Remote NDIS based Internet Sharing Device', '192.168.42.129');
+  const wifiScore = scoreInterface('Wi-Fi', '192.168.1.25');
+  const vpnScore = scoreInterface('Tailscale', '100.64.0.1');
+  assert.ok(usbScore > wifiScore);
+  assert.ok(wifiScore > vpnScore);
+
+  // 2. Room Mode + SRT-to-WebVTT subtitle pairing
+  const tmpRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'beamdrop-v150-'));
+  const saveDir = path.join(tmpRoot, 'save');
+  await fsp.mkdir(saveDir, { recursive: true });
+  const mp4Path = path.join(tmpRoot, 'lecture.mp4');
+  const srtPath = path.join(tmpRoot, 'lecture.srt');
+  await fsp.writeFile(mp4Path, Buffer.from('00000018667479706d703432', 'hex'));
+  await fsp.writeFile(srtPath, '1\r\n00:00:01,200 --> 00:00:03,500\r\nHello BeamDrop\r\n');
+
+  const srv = new BeamDropServer({ port: 0, host: '127.0.0.1', saveDir, requireApproval: true, roomMode: true });
+  t.after(async () => {
+    await srv.stop();
+    await fsp.rm(tmpRoot, { recursive: true, force: true });
+  });
+
+  const port = await srv.start();
+  const [videoItem] = await srv.addSharedPaths([mp4Path], 'pc');
+
+  // Room Mode approves valid PIN immediately (200) without waiting for PC modal
+  const pairRes = await fetch(`http://127.0.0.1:${port}/api/auth/pair`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pin: srv.pin, deviceName: 'GuestPhone' })
+  });
+  assert.equal(pairRes.status, 200);
+  const pairData = await pairRes.json();
+  assert.equal(pairData.status, 'approved');
+  assert.ok(pairData.token);
+
+  // Subtitle endpoint converts .srt to WEBVTT
+  const subRes = await fetch(`http://127.0.0.1:${port}/api/files/${videoItem.id}/subtitles`, {
+    headers: { Authorization: `Bearer ${pairData.token}` }
+  });
+  assert.equal(subRes.status, 200);
+  assert.ok(subRes.headers.get('content-type').includes('text/vtt'));
+  const vttText = await subRes.text();
+  assert.ok(vttText.startsWith('WEBVTT'));
+  assert.ok(vttText.includes('00:00:01.200 --> 00:00:03.500'));
+  assert.ok(vttText.includes('Hello BeamDrop'));
 });

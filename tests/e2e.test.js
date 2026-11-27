@@ -154,3 +154,117 @@ test('Mobile Web UI E2E: PIN pairing, 16:9 media cards, search/filter, modal pre
     await fsp.rm(tmpRoot, { recursive: true, force: true });
   }
 });
+
+test('UI Icon & Alignment Audit: Lucide round caps, centered buttons, zero overflow (Desktop & Mobile)', async (t) => {
+  const executablePath = findBrowserExecutable();
+  if (!executablePath) {
+    t.skip('No Chromium/Edge/Chrome executable found for alignment audit');
+    return;
+  }
+
+  let browser;
+  try {
+    browser = await chromium.launch({
+      executablePath,
+      headless: true,
+      args: ['--no-sandbox', '--disable-gpu']
+    });
+
+    // Audit 1: Desktop Renderer (1240x820)
+    const deskCtx = await browser.newContext({ viewport: { width: 1240, height: 820 } });
+    const deskPage = await deskCtx.newPage();
+    await deskPage.addInitScript(() => {
+      window.beamdrop = {
+        getState: async () => ({
+          url: 'http://192.168.1.10:5050',
+          mdnsUrl: 'http://beamdrop.local:5050',
+          qrUrl: 'http://192.168.1.10:5050/?q=demo',
+          qrDataUrl: '',
+          pin: '1234',
+          port: 5050,
+          localBaseUrl: 'http://127.0.0.1:5050',
+          localPreviewToken: '',
+          useHttps: false,
+          lanReachable: true,
+          vpnDetected: false,
+          ffmpegAvailable: false,
+          settings: { port: 5050, enableMdns: true, useHttps: false, launchAtLogin: false, ffmpegRemux: false, checkUpdatesOnStartup: true },
+          requireApproval: true,
+          saveDir: 'C:\\Users\\Demo\\Downloads\\BeamDrop',
+          interfaces: [],
+          selectedAddress: '192.168.1.10',
+          files: [],
+          sessions: [],
+          trustedDevices: [],
+          clipboard: []
+        }),
+        onStateChanged: () => {},
+        onTransferUpdate: () => {},
+        onApprovalRequest: () => {},
+        onUpdaterStatus: () => {},
+        onUpdaterProgress: () => {}
+      };
+    });
+
+    const deskPath = 'file:///' + path.resolve(__dirname, '../src/renderer/index.html').replace(/\\/g, '/');
+    await deskPage.goto(deskPath, { waitUntil: 'domcontentloaded' });
+    await deskPage.waitForTimeout(250);
+
+    const deskAudit = await deskPage.evaluate(() => {
+      const issues = [];
+      if (document.documentElement.scrollWidth > document.documentElement.clientWidth) {
+        issues.push(`Horizontal overflow: ${document.documentElement.scrollWidth} > ${document.documentElement.clientWidth}`);
+      }
+      for (const svg of document.querySelectorAll('svg')) {
+        const rect = svg.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) continue; // hidden
+        if (svg.getAttribute('stroke-linecap') !== 'round' || svg.getAttribute('stroke-linejoin') !== 'round') {
+          issues.push(`SVG missing round linecap/linejoin: ${svg.parentElement?.id || svg.parentElement?.className}`);
+        }
+        const btn = svg.closest('button');
+        if (btn) {
+          const bRect = btn.getBoundingClientRect();
+          const iconCy = rect.top + rect.height / 2;
+          const btnCy = bRect.top + bRect.height / 2;
+          if (Math.abs(iconCy - btnCy) > 2.5) {
+            issues.push(`Vertical misalignment in ${btn.id || btn.className}: diff=${(iconCy - btnCy).toFixed(2)}px`);
+          }
+          if (btn.classList.contains('win-btn') || btn.classList.contains('btn-icon') || btn.classList.contains('btn-icon-xs')) {
+            const iconCx = rect.left + rect.width / 2;
+            const btnCx = bRect.left + bRect.width / 2;
+            if (Math.abs(iconCx - btnCx) > 2.5) {
+              issues.push(`Horizontal misalignment in ${btn.id || btn.className}: diff=${(iconCx - btnCx).toFixed(2)}px`);
+            }
+          }
+        }
+      }
+      return issues;
+    });
+    assert.deepEqual(deskAudit, [], `Desktop alignment/icon issues: ${deskAudit.join('; ')}`);
+
+    // Audit 2: Mobile Web UI (390x844)
+    const mobCtx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const mobPage = await mobCtx.newPage();
+    const mobPath = 'file:///' + path.resolve(__dirname, '../src/mobile/index.html').replace(/\\/g, '/');
+    await mobPage.goto(mobPath, { waitUntil: 'domcontentloaded' });
+    await mobPage.waitForTimeout(200);
+
+    const mobAudit = await mobPage.evaluate(() => {
+      const issues = [];
+      if (document.documentElement.scrollWidth > document.documentElement.clientWidth) {
+        issues.push(`Mobile horizontal overflow: ${document.documentElement.scrollWidth} > ${document.documentElement.clientWidth}`);
+      }
+      for (const svg of document.querySelectorAll('svg')) {
+        const rect = svg.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) continue;
+        if (svg.getAttribute('stroke-linecap') !== 'round' || svg.getAttribute('stroke-linejoin') !== 'round') {
+          issues.push(`Mobile SVG missing round linecap/linejoin: ${svg.parentElement?.id || svg.parentElement?.className}`);
+        }
+      }
+      return issues;
+    });
+    assert.deepEqual(mobAudit, [], `Mobile alignment/icon issues: ${mobAudit.join('; ')}`);
+  } finally {
+    if (browser) await browser.close();
+  }
+});

@@ -12,8 +12,10 @@
     <!-- Custom Frameless Titlebar -->
     <header class="titlebar">
       <div class="titlebar-brand">
-        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M12 3v14m0-14l-5 5m5-5l5 5M5 20h14" stroke-linecap="round" stroke-linejoin="round"/>
+        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 17V7l-3 3" stroke="currentColor"/>
+          <path d="M15 7v10l3-3" stroke="#3b82f6"/>
+          <circle cx="12" cy="12" r="1.4" fill="#3b82f6" stroke="none"/>
         </svg>
         <span class="titlebar-name">BeamDrop</span>
         <span class="status-badge" id="lan-status-badge">
@@ -23,19 +25,19 @@
       </div>
       <div class="window-controls">
         <button id="btn-open-help" class="win-btn" title="Quick Guide &amp; About" aria-label="Help">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9 9.5a3 2.5 0 0 1 6 0c0 2-2 2-3 3.5"/><path d="M12 17h.01"/></svg>
         </button>
         <button id="btn-open-settings" class="win-btn" title="Settings" aria-label="Settings">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>
         </button>
         <button id="win-min" class="win-btn" title="Minimize" aria-label="Minimize">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg>
         </button>
         <button id="win-max" class="win-btn" title="Maximize" aria-label="Maximize">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="5" width="14" height="14" rx="1.5"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="16" x="4" y="4" rx="2"/></svg>
         </button>
         <button id="win-close" class="win-btn win-close" title="Minimize to Tray" aria-label="Close">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
         </button>
       </div>
     </header>
@@ -45,38 +47,38 @@
       <aside class="nav-rail">
         <nav class="nav-list">
           <button class="nav-item active" data-view="share">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
             <span class="nav-label">Share</span>
             <span class="nav-count" id="nav-files-count">0</span>
           </button>
           <button class="nav-item" data-view="connect">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3m4 0v4h-4m0-4h-3"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>
             <span class="nav-label">Connect</span>
             <span class="nav-count" id="nav-devices-count">0</span>
           </button>
           <button class="nav-item" data-view="transfers">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/></svg>
             <span class="nav-label">Transfers</span>
             <span class="nav-count" id="nav-transfers-count">0</span>
           </button>
           <button class="nav-item" data-view="clipboard">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
             <span class="nav-label">Text &amp; Links</span>
           </button>
         </nav>
 
         <div class="rail-footer">
           <button id="btn-open-updater" class="rail-btn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>
             <span id="updater-rail-label">Check Updates</span>
             <span id="updater-dot" class="update-dot hidden"></span>
           </button>
           <button id="btn-rail-save" class="rail-btn" title="Open Save Folder">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
             <span class="truncate" id="rail-save-label">BeamDrop</span>
           </button>
           <button id="btn-rail-theme" class="rail-btn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
             <span id="rail-theme-label">Light Mode</span>
           </button>
         </div>
@@ -85,6 +87,7 @@
       <!-- Main Canvas -->
       <main class="canvas">
         <div id="approval-banner" class="approval-banner hidden"></div>
+        <div id="network-alert-banner" class="approval-banner hidden"></div>
 
         <!-- VIEW 1: SHARE (Gallery Grid + List + Inbuilt Player) -->
         <section id="view-share" class="view active">
@@ -104,7 +107,7 @@
             <div class="search-wrap">
               <input id="file-search" type="text" class="search-input" placeholder="Search files..." />
               <button id="btn-clear-search" class="search-clear hidden" aria-label="Clear">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
               </button>
             </div>
             <div class="filter-pills">
@@ -140,7 +143,7 @@
               <div class="url-row">
                 <div class="url-pill" id="server-url">http://...</div>
                 <button id="btn-copy-url" class="btn-icon" title="Copy Address">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
                 </button>
               </div>
               <div id="mdns-pill" class="mdns-pill hidden"></div>
@@ -149,7 +152,7 @@
                 <span class="pin-label">PIN</span>
                 <span class="pin-code" id="pin-code">----</span>
                 <button id="btn-regen-pin" class="btn-icon" title="New PIN">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
                 </button>
               </div>
             </div>
@@ -159,19 +162,23 @@
                 <div class="field-row">
                   <span class="card-title" style="margin:0;">Network &amp; Security</span>
                   <button id="btn-refresh-net" class="btn-icon-xs" title="Refresh Networks">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
                   </button>
                 </div>
                 <div class="custom-select" id="iface-dropdown">
                   <button type="button" id="iface-trigger" class="custom-select-trigger">
                     <span id="iface-current" class="truncate">Detecting...</span>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
                   </button>
                   <div id="iface-menu" class="custom-select-menu hidden"></div>
                 </div>
                 <label class="toggle-row" for="chk-approval">
                   <span>Ask before connecting</span>
                   <input type="checkbox" id="chk-approval" class="switch" checked />
+                </label>
+                <label class="toggle-row" for="chk-room-mode">
+                  <span>Room Mode (PIN auto-accept · 64 devices)</span>
+                  <input type="checkbox" id="chk-room-mode" class="switch" />
                 </label>
                 <div class="save-dir-box">
                   <span class="field-label">Save Received Files To</span>
@@ -328,6 +335,10 @@
           <span>Play MKV Videos in Browser</span>
           <input id="set-remux" type="checkbox" class="switch" />
         </label>
+        <label class="setting-row">
+          <span>Clear Shared List on Quit</span>
+          <input id="set-clear-quit" type="checkbox" class="switch" />
+        </label>
       </div>
       <div class="modal-footer">
         <button id="btn-copy-diag" class="btn btn-sm">Copy Support Info</button>
@@ -358,7 +369,7 @@
         </div>
       </div>
       <div class="about-box">
-        <div><strong>BeamDrop v1.4.2</strong> · GNU GPLv3</div>
+        <div><strong>BeamDrop v1.5.0</strong> · GNU GPLv3</div>
         <div class="about-sub">Built by <b>Atharva Patil | P4inz</b> (<code>p4inz-code</code>)</div>
         <div class="about-links">
           <a href="https://github.com/p4inz-code/beamdrop" target="_blank" rel="noopener noreferrer" class="btn btn-sm">GitHub</a>

@@ -33,26 +33,42 @@ function isSafeHttpUrl(raw) {
 }
 
 function createSvgIcon(kind, cls = 'item-icon') {
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('fill', 'none');
   svg.setAttribute('stroke', 'currentColor');
-  svg.setAttribute('stroke-width', '1.75');
+  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
   svg.setAttribute('class', cls);
 
-  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  const add = (tag, attrs) => {
+    const el = document.createElementNS(svgNS, tag);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
+    svg.appendChild(el);
+  };
+
   if (kind === 'folder') {
-    path.setAttribute('d', 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z');
+    add('path', { d: 'M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z' });
   } else if (kind === 'video') {
-    path.setAttribute('d', 'M15 10l4.55-2.28A1 1 0 0 1 21 8.62v6.76a1 1 0 0 1-1.45.9L15 14v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2z');
+    add('path', { d: 'm16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5' });
+    add('rect', { x: 2, y: 6, width: 14, height: 12, rx: 2 });
   } else if (kind === 'image') {
-    path.setAttribute('d', 'M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5zm4 10l3-3 4 4 2-2 3 3');
+    add('rect', { width: 18, height: 18, x: 3, y: 3, rx: 2, ry: 2 });
+    add('circle', { cx: 9, cy: 9, r: 2 });
+    add('path', { d: 'm21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21' });
   } else if (kind === 'audio') {
-    path.setAttribute('d', 'M9 18V5l12-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm12-2a3 3 0 1 1-6 0 3 3 0 0 1 6 0z');
+    add('path', { d: 'M21 16V3a1 1 0 0 0-1.28-.96l-10 2.917a1 1 0 0 0-.72.96V19' });
+    add('circle', { cx: 18, cy: 16, r: 3 });
+    add('circle', { cx: 6, cy: 19, r: 3 });
   } else {
-    path.setAttribute('d', 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z');
+    add('path', { d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z' });
+    add('path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' });
+    add('path', { d: 'M10 9H8' });
+    add('path', { d: 'M16 13H8' });
+    add('path', { d: 'M16 17H8' });
   }
-  svg.appendChild(path);
   return svg;
 }
 
@@ -135,6 +151,7 @@ function renderState(state) {
   $('qr-large-url').textContent = state.url;
   $('pin-code').textContent = state.pin;
   $('chk-approval').checked = state.requireApproval;
+  $('chk-room-mode').checked = Boolean(state.roomMode);
   $('save-dir-path').textContent = state.saveDir;
   $('rail-save-label').textContent = state.saveDir.split(/[/\\]/).pop() || 'Save Folder';
 
@@ -158,14 +175,14 @@ function renderState(state) {
     dot.classList.remove('warn');
     txt.textContent = state.useHttps ? 'Encrypted Ready' : 'Ready';
   }
+  renderNetworkBanner(state);
 
   const ifacesSig = `${state.selectedAddress}|${JSON.stringify(state.interfaces)}`;
   if (ifacesSig !== lastIfacesSig) {
     lastIfacesSig = ifacesSig;
     const activeIface = state.interfaces.find((i) => i.address === state.selectedAddress);
-    $('iface-current').textContent = activeIface
-      ? `${activeIface.name} (${activeIface.address})`
-      : state.selectedAddress;
+    const fmtIface = (i) => `${i.isUsbTether ? '[USB] ' : ''}${i.name} (${i.address})`;
+    $('iface-current').textContent = activeIface ? fmtIface(activeIface) : state.selectedAddress;
 
     const menu = $('iface-menu');
     menu.textContent = '';
@@ -173,7 +190,7 @@ function renderState(state) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = `custom-select-opt${iface.address === state.selectedAddress ? ' active' : ''}`;
-      btn.textContent = `${iface.name} (${iface.address})`;
+      btn.textContent = fmtIface(iface);
       btn.addEventListener('click', () => {
         menu.classList.add('hidden');
         window.beamdrop.selectInterface(iface.address);
@@ -186,6 +203,57 @@ function renderState(state) {
   renderSessions(state.sessions);
   renderTrusted(state.trustedDevices || []);
   renderClipboard(state.clipboard);
+}
+
+let networkBannerDismissed = false;
+function renderNetworkBanner(state) {
+  const banner = $('network-alert-banner');
+  if (!banner) return;
+  if (state.lanReachable || networkBannerDismissed) {
+    banner.classList.add('hidden');
+    banner.textContent = '';
+    return;
+  }
+  banner.classList.remove('hidden');
+  banner.textContent = '';
+
+  const msg = document.createElement('span');
+  msg.textContent = state.platform === 'win32'
+    ? `Local Wi-Fi port ${state.port} looks blocked. Phones may not connect until Firewall or Hotspot is enabled.`
+    : `Local Wi-Fi port ${state.port} looks unreachable. Allow port ${state.port} in your firewall or switch adapters in Connect.`;
+
+  const actions = document.createElement('div');
+  actions.className = 'btn-row';
+
+  if (state.platform === 'win32') {
+    const fwBtn = document.createElement('button');
+    fwBtn.className = 'btn btn-primary btn-sm';
+    fwBtn.textContent = 'Fix Firewall';
+    fwBtn.addEventListener('click', async () => {
+      const ok = await window.beamdrop.fixFirewall();
+      showToast(ok ? 'Firewall rule added' : 'Firewall prompt cancelled');
+      await window.beamdrop.refreshNetwork();
+    });
+    actions.appendChild(fwBtn);
+
+    const hsBtn = document.createElement('button');
+    hsBtn.className = 'btn btn-sm';
+    hsBtn.textContent = 'Hotspot';
+    hsBtn.addEventListener('click', () => window.beamdrop.openHotspot());
+    actions.appendChild(hsBtn);
+  }
+
+  const dismissBtn = document.createElement('button');
+  dismissBtn.className = 'btn btn-sm';
+  dismissBtn.textContent = 'Dismiss';
+  dismissBtn.addEventListener('click', () => {
+    networkBannerDismissed = true;
+    banner.classList.add('hidden');
+  });
+  actions.appendChild(dismissBtn);
+
+  banner.appendChild(msg);
+  banner.appendChild(actions);
 }
 
 function updatePcBatchBar() {
@@ -214,6 +282,7 @@ async function openMediaPreview(file) {
   videoEl.pause();
   videoEl.classList.add('hidden');
   videoEl.removeAttribute('src');
+  videoEl.querySelectorAll('track').forEach((t) => t.remove());
   imgEl.classList.add('hidden');
   imgEl.removeAttribute('src');
   audioEl.pause();
@@ -225,6 +294,15 @@ async function openMediaPreview(file) {
   if (kind === 'video') {
     videoEl.classList.remove('hidden');
     videoEl.src = url;
+    if (currentState?.localBaseUrl && currentState?.localPreviewToken) {
+      const track = document.createElement('track');
+      track.kind = 'subtitles';
+      track.srclang = 'en';
+      track.label = 'Subtitles';
+      track.default = true;
+      track.src = `${currentState.localBaseUrl}/api/files/${encodeURIComponent(file.id)}/subtitles?token=${encodeURIComponent(currentState.localPreviewToken)}`;
+      videoEl.appendChild(track);
+    }
   } else if (kind === 'image') {
     imgEl.classList.remove('hidden');
     imgEl.src = url;
@@ -767,6 +845,7 @@ $('btn-regen-pin').addEventListener('click', () => {
   showToast('New PIN generated');
 });
 $('chk-approval').addEventListener('change', (e) => window.beamdrop.setRequireApproval(e.target.checked));
+$('chk-room-mode').addEventListener('change', (e) => window.beamdrop.setRoomMode(e.target.checked));
 $('btn-change-save').addEventListener('click', () => window.beamdrop.pickSaveDir());
 $('btn-open-save').addEventListener('click', () => window.beamdrop.openSaveDir());
 $('btn-revoke').addEventListener('click', () => {
@@ -884,6 +963,7 @@ $('btn-open-settings').addEventListener('click', () => {
     $('set-login').checked = Boolean(s.launchAtLogin);
     $('set-remux').checked = Boolean(s.ffmpegRemux);
     $('set-remux').disabled = !currentState.ffmpegAvailable;
+    $('set-clear-quit').checked = Boolean(s.clearOnQuit);
   }
   $('settings-modal').classList.remove('hidden');
 });
@@ -898,7 +978,8 @@ $('btn-save-settings').addEventListener('click', async () => {
     useHttps: $('set-https').checked,
     checkUpdatesOnStartup: $('set-autoupdate').checked,
     launchAtLogin: $('set-login').checked,
-    ffmpegRemux: $('set-remux').checked
+    ffmpegRemux: $('set-remux').checked,
+    clearOnQuit: $('set-clear-quit').checked
   });
   $('settings-modal').classList.add('hidden');
   showToast('Settings saved');
@@ -920,7 +1001,7 @@ $('btn-open-hotspot').addEventListener('click', () => window.beamdrop.openHotspo
 async function runUpdateCheck() {
   $('updater-status-text').textContent = 'Checking GitHub Releases...';
   $('updater-notes').classList.add('hidden');
-  $('updater-download-row');
+  $('updater-download-row').classList.add('hidden');
   $('btn-updater-download').classList.add('hidden');
   $('btn-updater-now').classList.add('hidden');
   $('btn-updater-quit').classList.add('hidden');
