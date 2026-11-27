@@ -168,13 +168,19 @@ function renderState(state) {
   if (!state.lanReachable) {
     dot.classList.add('warn');
     txt.textContent = 'Check Firewall';
-  } else if (state.vpnDetected) {
+  } else if (state.wellbeing?.storage?.lowDisk) {
     dot.classList.add('warn');
-    txt.textContent = 'VPN Active';
+    txt.textContent = 'Low Disk';
   } else {
     dot.classList.remove('warn');
-    txt.textContent = state.useHttps ? 'Encrypted Ready' : 'Ready';
+    const count = Array.isArray(state.sessions) ? state.sessions.length : 0;
+    if (count > 0) {
+      txt.textContent = state.useHttps ? `Secured · ${count}` : `Connected · ${count}`;
+    } else {
+      txt.textContent = state.useHttps ? 'Secured' : 'Active';
+    }
   }
+  if (state.wellbeing) renderWellbeing(state.wellbeing);
   renderNetworkBanner(state);
 
   const ifacesSig = `${state.selectedAddress}|${JSON.stringify(state.interfaces)}`;
@@ -997,18 +1003,114 @@ $('btn-fix-fw').addEventListener('click', async () => {
 });
 $('btn-open-hotspot').addEventListener('click', () => window.beamdrop.openHotspot());
 
+// System Wellbeing UI
+function renderWellbeing(wb) {
+  const grid = $('wellbeing-grid');
+  if (!grid || !wb) return;
+  grid.textContent = '';
+
+  const freeText = wb.storage?.freeBytes != null ? formatBytes(wb.storage.freeBytes) : 'Unknown';
+  const rows = [
+    {
+      name: 'Transfer Server',
+      level: wb.server?.ok ? 'ok' : 'bad',
+      val: wb.server?.ok
+        ? `Online · Port ${wb.server.port}${wb.server.https ? ' (HTTPS)' : ''} · ${wb.server.activeSessions}/${wb.server.maxSessions} devices`
+        : 'Offline'
+    },
+    {
+      name: 'LAN & Firewall',
+      level: wb.lanReachable ? (wb.vpnDetected ? 'warn' : 'ok') : 'bad',
+      val: wb.lanReachable
+        ? (wb.vpnDetected ? 'Reachable (VPN active)' : 'Reachable on local Wi-Fi')
+        : 'Blocked — click Fix Firewall'
+    },
+    {
+      name: 'Save Folder Storage',
+      level: wb.storage?.ok ? 'ok' : (wb.storage?.writable ? 'warn' : 'bad'),
+      val: !wb.storage?.writable
+        ? 'Folder not writable'
+        : wb.storage?.lowDisk
+          ? `Low space (${freeText} free)`
+          : `Writable · ${freeText} free`
+    },
+    {
+      name: 'Upload Pipeline',
+      level: wb.uploads?.ok ? 'ok' : 'warn',
+      val: `${wb.uploads?.active || 0} / ${wb.uploads?.max || 16} active uploads`
+    },
+    {
+      name: 'Discovery & Remux',
+      level: wb.mdnsEnabled ? 'ok' : 'warn',
+      val: `mDNS ${wb.mdnsEnabled ? 'On' : 'Off'} · FFmpeg ${wb.ffmpeg?.available ? 'Ready' : 'Not installed'}`
+    },
+    {
+      name: 'Process Memory',
+      level: (wb.memory?.rssMb || 0) < 512 ? 'ok' : 'warn',
+      val: `${wb.memory?.rssMb || 0} MB RSS`
+    }
+  ];
+
+  for (const r of rows) {
+    const row = document.createElement('div');
+    row.className = 'wellbeing-row';
+    const left = document.createElement('div');
+    left.className = 'wellbeing-left';
+    const dot = document.createElement('span');
+    dot.className = `wellbeing-dot${r.level === 'ok' ? '' : ` ${r.level}`}`;
+    const name = document.createElement('span');
+    name.className = 'wellbeing-name';
+    name.textContent = r.name;
+    left.appendChild(dot);
+    left.appendChild(name);
+
+    const val = document.createElement('span');
+    val.className = 'wellbeing-val';
+    val.textContent = r.val;
+
+    row.appendChild(left);
+    row.appendChild(val);
+    grid.appendChild(row);
+  }
+  if (wb.timestamp) {
+    $('wellbeing-checked-at').textContent = `Checked at ${new Date(wb.timestamp).toLocaleTimeString()}`;
+  }
+}
+
+$('lan-status-badge').addEventListener('click', async () => {
+  $('wellbeing-modal').classList.remove('hidden');
+  if (window.beamdrop.getWellbeing) {
+    const wb = await window.beamdrop.getWellbeing();
+    renderWellbeing(wb);
+  }
+});
+$('btn-close-wellbeing').addEventListener('click', () => $('wellbeing-modal').classList.add('hidden'));
+$('btn-recheck-wellbeing').addEventListener('click', async () => {
+  if (!window.beamdrop.getWellbeing) return;
+  const wb = await window.beamdrop.getWellbeing();
+  renderWellbeing(wb);
+  showToast(wb.ok && wb.lanReachable ? 'All systems healthy' : 'Check warnings above');
+});
+
 // Auto-Updater UI
 async function runUpdateCheck() {
+  $('btn-updater-check').disabled = true;
   $('updater-status-text').textContent = 'Checking GitHub Releases...';
+  $('updater-meta-row').classList.add('hidden');
+  $('updater-verify-pill').classList.add('hidden');
   $('updater-notes').classList.add('hidden');
-  $('updater-download-row').classList.add('hidden');
+  $('updater-progress-wrap').classList.add('hidden');
   $('btn-updater-download').classList.add('hidden');
   $('btn-updater-now').classList.add('hidden');
   $('btn-updater-quit').classList.add('hidden');
   try {
     await window.beamdrop.checkUpdates();
+    $('updater-checked-at').textContent = `Last checked: ${new Date().toLocaleTimeString()}`;
+    $('updater-checked-at').classList.remove('hidden');
   } catch (err) {
     $('updater-status-text').textContent = `Could not check for updates: ${err.message}`;
+  } finally {
+    $('btn-updater-check').disabled = false;
   }
 }
 
@@ -1021,14 +1123,19 @@ $('btn-updater-check').addEventListener('click', runUpdateCheck);
 
 $('btn-updater-download').addEventListener('click', async () => {
   $('btn-updater-download').classList.add('hidden');
+  $('btn-updater-check').disabled = true;
   $('btn-updater-cancel').classList.remove('hidden');
   $('updater-progress-wrap').classList.remove('hidden');
-  $('updater-status-text').textContent = 'Downloading update...';
+  $('updater-progress-fill').style.width = '0%';
+  $('updater-status-text').textContent = 'Downloading update package...';
   try {
     await window.beamdrop.downloadUpdate();
   } catch (err) {
     $('updater-status-text').textContent = `Update failed: ${err.message}`;
     $('btn-updater-cancel').classList.add('hidden');
+    $('btn-updater-download').classList.remove('hidden');
+  } finally {
+    $('btn-updater-check').disabled = false;
   }
 });
 
@@ -1044,7 +1151,15 @@ window.beamdrop.onUpdaterStatus((st) => {
   if (st.state === 'available' && st.release) {
     $('updater-dot').classList.remove('hidden');
     $('updater-rail-label').textContent = `Update v${st.release.latestVersion}`;
-    $('updater-status-text').textContent = `Version ${st.release.latestVersion} is available (current: ${st.release.currentVersion}).`;
+    $('updater-version-pill').textContent = `v${st.release.currentVersion} → v${st.release.latestVersion}`;
+    if (st.release.installer?.size) {
+      $('updater-size-pill').textContent = formatBytes(st.release.installer.size);
+      $('updater-size-pill').classList.remove('hidden');
+    } else {
+      $('updater-size-pill').classList.add('hidden');
+    }
+    $('updater-meta-row').classList.remove('hidden');
+    $('updater-status-text').textContent = `BeamDrop v${st.release.latestVersion} is ready to download.`;
     if (st.release.notes) {
       $('updater-notes').textContent = st.release.notes;
       $('updater-notes').classList.remove('hidden');
@@ -1055,16 +1170,21 @@ window.beamdrop.onUpdaterStatus((st) => {
   } else if (st.state === 'up-to-date' && st.release) {
     $('updater-dot').classList.add('hidden');
     $('updater-rail-label').textContent = 'Up to Date';
-    $('updater-status-text').textContent = `BeamDrop ${st.release.currentVersion} is the latest version.`;
+    $('updater-version-pill').textContent = `v${st.release.currentVersion}`;
+    $('updater-size-pill').classList.add('hidden');
+    $('updater-meta-row').classList.remove('hidden');
+    $('updater-status-text').textContent = `You are running the latest version of BeamDrop.`;
   } else if (st.state === 'downloaded') {
     $('btn-updater-cancel').classList.add('hidden');
     $('btn-updater-now').classList.remove('hidden');
     $('btn-updater-quit').classList.remove('hidden');
+    if (st.sha256Verified) $('updater-verify-pill').classList.remove('hidden');
     $('updater-status-text').textContent = st.sha256Verified
-      ? 'Downloaded and verified (SHA-256). Ready to install.'
-      : 'Downloaded. Ready to install.';
+      ? 'Download complete and SHA-256 verified. Ready to install.'
+      : 'Download complete. Ready to install.';
   } else if (st.state === 'cancelled') {
     $('btn-updater-cancel').classList.add('hidden');
+    $('btn-updater-download').classList.remove('hidden');
     $('updater-progress-wrap').classList.add('hidden');
     $('updater-status-text').textContent = 'Download cancelled.';
   }
@@ -1075,7 +1195,9 @@ window.beamdrop.onUpdaterProgress((pr) => {
   const dlMb = (pr.downloadedBytes / (1024 * 1024)).toFixed(1);
   const totMb = pr.totalBytes ? (pr.totalBytes / (1024 * 1024)).toFixed(1) : '?';
   const mbps = (pr.speedBps / (1024 * 1024)).toFixed(1);
-  $('updater-progress-meta').textContent = `${pr.percent}% · ${dlMb} / ${totMb} MB · ${mbps} MB/s`;
+  const remBytes = pr.totalBytes ? Math.max(0, pr.totalBytes - pr.downloadedBytes) : 0;
+  const eta = pr.speedBps > 0 && remBytes > 0 ? ` · ${Math.ceil(remBytes / pr.speedBps)}s left` : '';
+  $('updater-progress-meta').textContent = `${pr.percent}% · ${dlMb} / ${totMb} MB · ${mbps} MB/s${eta}`;
 });
 
 // Keyboard shortcuts
@@ -1090,6 +1212,7 @@ document.addEventListener('keydown', (e) => {
     $('settings-modal').classList.add('hidden');
     $('help-modal').classList.add('hidden');
     $('updater-modal').classList.add('hidden');
+    $('wellbeing-modal').classList.add('hidden');
     $('iface-menu').classList.add('hidden');
   } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'o') {
     e.preventDefault();

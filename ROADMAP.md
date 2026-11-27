@@ -29,6 +29,13 @@
 
 ---
 
+## v1.5.0 – v1.5.1 (Shipped)
+- [x] **4-View Navigation Rail & Sharp Architectural UI**: `210px` rail (`Share`, `Connect`, `Transfers`, `Text & Links`), `1240×820` remembered bounds, Gallery Grid/List, `2px–4px` edges
+- [x] **Universal In-App Viewer (PC & Mobile)**: Video (+ `.srt`/`.vtt` subtitles), Images, Audio, and Text/Code (512 KB range cap) with **64 GB** per-file limit
+- [x] **Room Mode (`64` Devices) & USB Tethering Priority**: Optional PIN auto-accept for rooms + Gigabit USB adapter ranking
+- [x] **Real-Time Backend Wellbeing & Inline Firewall Prompt**: Live disk/LAN/server/memory health modal + 1-click firewall banner
+- [x] **SHA-256 Auto-Updater & Playwright E2E + Lucide Audit**: In-app GitHub Releases updater + automated alignment/icon tests
+
 ## v2.0.0 (Future)
 - [ ] Optional hardware-accelerated video transcoding (NVENC / QuickSync) for MKV/HEVC playback on older phones
 - [ ] Two-way watched folder sync

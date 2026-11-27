@@ -76,6 +76,7 @@ async function buildAppState() {
     cachedQrDataUrl = await server.getQrDataUrl(qrUrl);
   }
   const lanReachable = await probeLanReachability(activeAddr, server.port, settings.useHttps);
+  const wellbeing = await server.getWellbeingReport();
   const qrDataUrl = cachedQrDataUrl;
 
   return {
@@ -89,6 +90,12 @@ async function buildAppState() {
     port: server.port,
     useHttps: settings.useHttps,
     lanReachable,
+    wellbeing: {
+      ...wellbeing,
+      lanReachable,
+      mdnsEnabled: Boolean(settings.enableMdns),
+      vpnDetected: net.vpnDetected
+    },
     vpnDetected: net.vpnDetected,
     vpnNames: net.vpnNames,
     ffmpegAvailable: server.ffmpegAvailable,
@@ -260,6 +267,19 @@ function registerIpc() {
   ipcMain.handle('window:close', () => mainWindow?.close());
 
   ipcMain.handle('app:get-state', () => buildAppState());
+  ipcMain.handle('app:get-wellbeing', async () => {
+    const net = getNetworkInterfaces();
+    const addr = selectedAddress || net.recommended.address;
+    const settings = settingsStore.get();
+    const lanReachable = await probeLanReachability(addr, server.port, settings.useHttps);
+    const report = await server.getWellbeingReport();
+    return {
+      ...report,
+      lanReachable,
+      mdnsEnabled: Boolean(settings.enableMdns),
+      vpnDetected: net.vpnDetected
+    };
+  });
 
   ipcMain.handle('app:select-interface', async (_e, addr) => {
     if (typeof addr === 'string' && addr.length <= 64) {

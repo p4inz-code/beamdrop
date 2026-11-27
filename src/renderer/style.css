@@ -1,11 +1,11 @@
 :root,
 [data-theme="dark"] {
-  --bg: #0c0c0e;
-  --surface: #141417;
-  --surface-2: #1b1b1f;
-  --border: #2a2a30;
+  --bg: #080809;
+  --surface: #101012;
+  --surface-2: #17171a;
+  --border: #232327;
   --text: #ededef;
-  --muted: #8e8e93;
+  --muted: #7c7c85;
   --accent: #3b82f6;
   --accent-hover: #2563eb;
   --primary-bg: #f4f4f5;
@@ -17,10 +17,10 @@
 }
 
 [data-theme="light"] {
-  --bg: #f5f5f7;
+  --bg: #f8f8f8;
   --surface: #ffffff;
   --surface-2: #f0f0f3;
-  --border: #dcdce0;
+  --border: #e1e1e4;
   --text: #111113;
   --muted: #6e6e73;
   --accent: #2563eb;
@@ -50,7 +50,7 @@
 
 ::-webkit-scrollbar-thumb {
   background: var(--border);
-  border-radius: 999px;
+  border-radius: 4px;
 }
 
 body {
@@ -111,7 +111,7 @@ body {
   background: var(--bg);
   border: 1px solid var(--border);
   padding: 2px 9px;
-  border-radius: 999px;
+  border-radius: 4px;
   margin-left: 4px;
 }
 
@@ -187,7 +187,7 @@ body {
   background: transparent;
   color: var(--muted);
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: 3px;
   padding: 9px 10px;
   font-size: 13px;
   font-weight: 500;
@@ -227,7 +227,7 @@ body {
   background: var(--bg);
   border: 1px solid var(--border);
   padding: 1px 6px;
-  border-radius: 5px;
+  border-radius: 2px;
 }
 
 .rail-footer {
@@ -243,7 +243,7 @@ body {
   background: transparent;
   color: var(--muted);
   border: none;
-  border-radius: 6px;
+  border-radius: 2px;
   padding: 7px 10px;
   font-size: 12px;
   display: flex;
@@ -296,7 +296,7 @@ body {
 .approval-banner {
   background: var(--surface-2);
   border: 1px solid var(--accent);
-  border-radius: 8px;
+  border-radius: 3px;
   padding: 10px 14px;
   display: flex;
   justify-content: space-between;
@@ -307,7 +307,7 @@ body {
 
 .drop-bar {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 3px;
   padding: 12px 16px;
   background: var(--surface);
   display: flex;
@@ -361,7 +361,7 @@ body.window-drag .drop-bar {
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: 3px;
   padding: 7px 28px 7px 10px;
   font-size: 12px;
   outline: none;
@@ -398,7 +398,7 @@ body.window-drag .drop-bar {
   background: var(--surface);
   color: var(--muted);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 2px;
   padding: 5px 10px;
   font-size: 11px;
   cursor: pointer;
@@ -416,7 +416,7 @@ body.window-drag .drop-bar {
   align-items: center;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: 3px;
   padding: 7px 12px;
   font-size: 12px;
   flex-shrink: 0;
@@ -433,7 +433,7 @@ body.window-drag .drop-bar {
 .gallery-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: 3px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -477,7 +477,7 @@ body.window-drag .drop-bar {
   font-size: 10px;
   font-weight: 600;
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: 2px;
   font-family: ui-monospace, Consolas, monospace;
 }
 
@@ -492,7 +492,7 @@ body.window-drag .drop-bar {
   appearance: none;
   width: 16px;
   height: 16px;
-  border-radius: 4px;
+  border-radius: 2px;
   border: 1.5px solid var(--border);
   background: var(--surface);
   cursor: pointer;
@@ -536,7 +536,7 @@ body.window-drag .drop-bar {
   grid-column: 1 / -1;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 4px;
   padding: 28px 24px;
   display: flex;
   flex-direction: column;
@@ -552,7 +552,7 @@ body.window-drag .drop-bar {
 .step-box {
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 3px;
   padding: 12px;
   font-size: 12px;
 }
@@ -587,7 +587,7 @@ body.window-drag .drop-bar {
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 4px;
   padding: 16px;
 }
 
@@ -607,7 +607,7 @@ body.window-drag .drop-bar {
 .pair-card img {
   width: 220px;
   height: 220px;
-  border-radius: 10px;
+  border-radius: 4px;
   background: #fff;
   padding: 8px;
   border: 1px solid var(--border);
@@ -633,7 +633,7 @@ body.window-drag .drop-bar {
   background: var(--bg);
   border: 1px solid var(--border);
   padding: 5px 10px;
-  border-radius: 6px;
+  border-radius: 2px;
   user-select: text;
   word-break: break-all;
   text-align: center;
@@ -693,7 +693,7 @@ body.window-drag .drop-bar {
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: 3px;
   padding: 8px 10px;
   font-size: 12px;
   display: flex;
@@ -723,7 +723,7 @@ body.window-drag .drop-bar {
   right: 0;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 3px;
   padding: 4px;
   z-index: 40;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
@@ -737,7 +737,7 @@ body.window-drag .drop-bar {
   background: transparent;
   color: var(--text);
   border: none;
-  border-radius: 5px;
+  border-radius: 2px;
   padding: 6px 8px;
   font-size: 12px;
   cursor: pointer;
@@ -764,7 +764,7 @@ body.window-drag .drop-bar {
   height: 18px;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 4px;
   position: relative;
   cursor: pointer;
   flex-shrink: 0;
@@ -809,7 +809,7 @@ body.window-drag .drop-bar {
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: 3px;
   padding: 7px 12px;
   font-size: 12px;
   font-weight: 500;
@@ -847,7 +847,7 @@ body.window-drag .drop-bar {
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--muted);
-  border-radius: 6px;
+  border-radius: 2px;
   width: 28px;
   height: 28px;
   cursor: pointer;
@@ -942,7 +942,7 @@ body.window-drag .drop-bar {
 .item-row {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 3px;
   padding: 10px 12px;
   display: flex;
   justify-content: space-between;
@@ -983,7 +983,7 @@ body.window-drag .drop-bar {
   display: inline-block;
   font-size: 10px;
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: 2px;
   margin-right: 6px;
   font-weight: 600;
   font-family: ui-monospace, Consolas, monospace;
@@ -1002,7 +1002,7 @@ body.window-drag .drop-bar {
 .progress-bar {
   height: 6px;
   background: var(--bg);
-  border-radius: 999px;
+  border-radius: 4px;
   overflow: hidden;
   margin-top: 5px;
 }
@@ -1024,7 +1024,7 @@ body.window-drag .drop-bar {
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 3px;
   padding: 8px 10px;
   font-family: inherit;
   font-size: 12px;
@@ -1060,7 +1060,7 @@ body.window-drag .drop-bar {
   max-width: 92vw;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 4px;
   padding: 18px;
   display: flex;
   flex-direction: column;
@@ -1076,7 +1076,7 @@ body.window-drag .drop-bar {
   width: 100%;
   max-height: 70vh;
   object-fit: contain;
-  border-radius: 8px;
+  border-radius: 3px;
   background: #000;
 }
 
@@ -1090,7 +1090,7 @@ body.window-drag .drop-bar {
   padding: 14px;
   max-height: 68vh;
   overflow: auto;
-  border-radius: 8px;
+  border-radius: 3px;
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text);
@@ -1109,7 +1109,7 @@ body.window-drag .drop-bar {
 .qr-modal-card img {
   width: 280px;
   height: 280px;
-  border-radius: 8px;
+  border-radius: 3px;
   background: #fff;
   padding: 8px;
 }
@@ -1127,7 +1127,7 @@ body.window-drag .drop-bar {
 .updater-notes {
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 3px;
   padding: 10px 12px;
   font-size: 12px;
   color: var(--muted);
@@ -1135,6 +1135,93 @@ body.window-drag .drop-bar {
   overflow-y: auto;
   white-space: pre-wrap;
   line-height: 1.45;
+}
+
+.status-btn {
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.status-btn:hover {
+  border-color: var(--accent);
+}
+
+.updater-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.updater-pill {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.updater-pill.verified {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.progress-fill {
+  transition: width 150ms linear;
+}
+
+.wellbeing-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wellbeing-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 11px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.wellbeing-left {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.wellbeing-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--ok);
+}
+
+.wellbeing-dot.warn {
+  background: var(--warn);
+}
+
+.wellbeing-dot.bad {
+  background: var(--danger);
+}
+
+.wellbeing-name {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.wellbeing-val {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .modal-header {
@@ -1163,7 +1250,7 @@ body.window-drag .drop-bar {
   align-items: center;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: 3px;
   overflow: hidden;
 }
 
@@ -1201,7 +1288,7 @@ body.window-drag .drop-bar {
   display: inline-flex;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: 3px;
   padding: 2px;
 }
 
@@ -1209,7 +1296,7 @@ body.window-drag .drop-bar {
   background: transparent;
   color: var(--muted);
   border: none;
-  border-radius: 5px;
+  border-radius: 2px;
   padding: 4px 10px;
   font-size: 11px;
   cursor: pointer;
@@ -1238,7 +1325,7 @@ body.window-drag .drop-bar {
 .guide-item {
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 3px;
   padding: 10px 12px;
   font-size: 12px;
 }
@@ -1280,7 +1367,7 @@ body.window-drag .drop-bar {
   background: var(--surface-2);
   color: var(--text);
   border: 1px solid var(--accent);
-  border-radius: 7px;
+  border-radius: 3px;
   padding: 8px 14px;
   font-size: 12px;
   z-index: 100;

@@ -272,6 +272,56 @@ class BeamDropServer extends EventEmitter {
     this.emit('state:changed');
   }
 
+  async getWellbeingReport() {
+    let storageWritable = false;
+    let freeBytes = null;
+    try {
+      await fsp.mkdir(this.saveDir, { recursive: true });
+      await fsp.access(this.saveDir, fs.constants.W_OK);
+      storageWritable = true;
+      if (typeof fsp.statfs === 'function') {
+        const st = await fsp.statfs(this.saveDir);
+        freeBytes = Number(st.bavail) * Number(st.bsize);
+      }
+    } catch {
+      storageWritable = false;
+    }
+
+    const lowDisk = freeBytes !== null && freeBytes < 2 * 1024 * 1024 * 1024;
+    const listening = Boolean(this.httpServer && this.httpServer.listening);
+    const rssMb = Math.round(process.memoryUsage().rss / (1024 * 1024));
+
+    return {
+      ok: listening && storageWritable && !lowDisk,
+      timestamp: Date.now(),
+      server: {
+        ok: listening,
+        port: this.port,
+        https: Boolean(this.tlsOptions),
+        activeSessions: this.sessions.size,
+        maxSessions: MAX_ACTIVE_SESSIONS,
+        roomMode: this.roomMode
+      },
+      storage: {
+        ok: storageWritable && !lowDisk,
+        writable: storageWritable,
+        lowDisk,
+        freeBytes
+      },
+      uploads: {
+        ok: this.uploads.size < MAX_CONCURRENT_UPLOADS,
+        active: this.uploads.size,
+        max: MAX_CONCURRENT_UPLOADS
+      },
+      ffmpeg: {
+        available: this.ffmpegAvailable
+      },
+      memory: {
+        rssMb
+      }
+    };
+  }
+
   revokeSessionById(sessionId) {
     for (const [token, s] of this.sessions.entries()) {
       if (s.id === sessionId) {
@@ -626,6 +676,10 @@ class BeamDropServer extends EventEmitter {
 
       if (req.method === 'GET' && pathname === '/api/files') {
         return sendJson(res, 200, { files: this.getPublicFileList() });
+      }
+
+      if (req.method === 'GET' && pathname === '/api/wellbeing') {
+        return sendJson(res, 200, await this.getWellbeingReport());
       }
 
       const fileMatch = pathname.match(/^\/api\/files\/([a-zA-Z0-9-]+)\/(stream|download|remux|subtitles)$/);

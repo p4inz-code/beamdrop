@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('beamdrop', {
   maximizeWindow: () => ipcRenderer.invoke('window:maximize'),
   closeWindow: () => ipcRenderer.invoke('window:close'),
   getState: () => ipcRenderer.invoke('app:get-state'),
+  getWellbeing: () => ipcRenderer.invoke('app:get-wellbeing'),
   selectInterface: (address) => ipcRenderer.invoke('app:select-interface', address),
   regeneratePin: () => ipcRenderer.invoke('app:regenerate-pin'),
   setRequireApproval: (enabled) => ipcRenderer.invoke('app:set-approval', enabled),

@@ -17,10 +17,10 @@
           <path d="M16 6v12m-3-3 3 3 3-3" stroke="#3b82f6"/>
         </svg>
         <span class="titlebar-name">BeamDrop</span>
-        <span class="status-badge" id="lan-status-badge">
+        <button type="button" class="status-badge status-btn" id="lan-status-badge" title="View System Wellbeing">
           <span class="status-dot" id="lan-status-dot"></span>
           <span id="lan-status-text">Ready</span>
-        </span>
+        </button>
       </div>
       <div class="window-controls">
         <button id="btn-open-help" class="win-btn" title="Quick Guide &amp; About" aria-label="Help">
@@ -273,20 +273,44 @@
         <strong id="updater-title">Software Update</strong>
         <button id="btn-close-updater" class="btn btn-sm">Close</button>
       </div>
+      <div id="updater-meta-row" class="updater-meta-row hidden">
+        <span id="updater-version-pill" class="updater-pill"></span>
+        <span id="updater-size-pill" class="updater-pill hidden"></span>
+        <span id="updater-verify-pill" class="updater-pill verified hidden">SHA-256 Verified</span>
+      </div>
       <div id="updater-status-text" class="muted-text">Checking GitHub Releases...</div>
+      <div id="updater-checked-at" class="item-sub hidden"></div>
       <div id="updater-notes" class="updater-notes hidden"></div>
       <div id="updater-progress-wrap" class="hidden">
         <div class="progress-bar"><div id="updater-progress-fill" class="progress-fill" style="width:0%"></div></div>
         <div id="updater-progress-meta" class="item-sub" style="margin-top:6px;">0%</div>
       </div>
       <div class="modal-footer">
-        <button id="btn-updater-check" class="btn btn-sm">Check Again</button>
+        <div class="btn-row">
+          <button id="btn-updater-check" class="btn btn-sm">Check Again</button>
+          <a href="https://github.com/p4inz-code/beamdrop/releases" target="_blank" rel="noopener noreferrer" class="btn btn-sm">Releases</a>
+        </div>
         <div class="btn-row">
           <button id="btn-updater-cancel" class="btn btn-sm hidden">Cancel</button>
           <button id="btn-updater-download" class="btn btn-primary btn-sm hidden">Download Update</button>
           <button id="btn-updater-quit" class="btn btn-sm hidden">Install on Quit</button>
           <button id="btn-updater-now" class="btn btn-primary btn-sm hidden">Install Now</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- System Wellbeing Modal -->
+  <div id="wellbeing-modal" class="modal hidden">
+    <div class="modal-card updater-modal-card">
+      <div class="modal-header">
+        <strong>System Wellbeing</strong>
+        <button id="btn-close-wellbeing" class="btn btn-sm">Close</button>
+      </div>
+      <div id="wellbeing-grid" class="wellbeing-grid"></div>
+      <div class="modal-footer">
+        <span id="wellbeing-checked-at" class="item-sub">Live local diagnostics</span>
+        <button id="btn-recheck-wellbeing" class="btn btn-primary btn-sm">Re-run Check</button>
       </div>
     </div>
   </div>
@@ -368,7 +392,7 @@
         </div>
       </div>
       <div class="about-box">
-        <div><strong>BeamDrop v1.5.0</strong> · GNU GPLv3</div>
+        <div><strong>BeamDrop v1.5.1</strong> · GNU GPLv3</div>
         <div class="about-sub">Built by <b>Atharva Patil | P4inz</b> (<code>p4inz-code</code>)</div>
         <div class="about-links">
           <a href="https://github.com/p4inz-code/beamdrop" target="_blank" rel="noopener noreferrer" class="btn btn-sm">GitHub</a>

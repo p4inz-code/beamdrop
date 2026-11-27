@@ -2,6 +2,13 @@
 
 All notable changes to **BeamDrop** are documented in this file.
 
+## [1.5.1] - 2026-11-27
+
+### Wellbeing, Updater & Architectural UI
+- **Real-Time Backend Wellbeing (`getWellbeingReport()` / `/api/wellbeing`)**: Clickable titlebar status (**Active**, **Secured**, **Connected · N**, **Check Firewall**, **Low Disk**) opens the live **System Wellbeing** modal inspecting Server, LAN/Firewall, Save Folder free space & writability (`statfs`), Upload pipeline, mDNS/FFmpeg, and RSS memory.
+- **Polished Software Update UI**: Fixed a null-element reference in `runUpdateCheck()`, added version transition & size pills, `SHA-256 Verified` badge, live ETA (`s left`), `Cancel` recovery, and `Releases` fallback link.
+- **Sharp Architectural UI**: Replaced rounded/beveled cards and `999px` pills with crisp `2px–4px` geometry, deeper monochrome surfaces (`#080809` / `#101012` / `#232327`), and plain `Active` / `Secured` / `Connected` status labels.
+
 ## [1.5.0] - 2026-11-27
 
 ### Setup, Bridge & Media

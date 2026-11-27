@@ -752,4 +752,17 @@ test('v1.5.0: Room Mode auto-approve, SRT-to-VTT subtitle endpoint, and USB teth
   assert.ok(vttText.startsWith('WEBVTT'));
   assert.ok(vttText.includes('00:00:01.200 --> 00:00:03.500'));
   assert.ok(vttText.includes('Hello BeamDrop'));
+
+  // 3. Real-time Backend Wellbeing report (/api/wellbeing)
+  const wbRes = await fetch(`http://127.0.0.1:${port}/api/wellbeing`, {
+    headers: { Authorization: `Bearer ${pairData.token}` }
+  });
+  assert.equal(wbRes.status, 200);
+  const wb = await wbRes.json();
+  assert.equal(wb.server.ok, true);
+  assert.equal(wb.server.port, port);
+  assert.equal(wb.server.maxSessions, 64);
+  assert.equal(wb.storage.writable, true);
+  assert.equal(wb.uploads.max, 16);
+  assert.ok(wb.memory.rssMb > 0);
 });
