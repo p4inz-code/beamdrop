@@ -922,10 +922,11 @@ document.body.addEventListener('drop', async (e) => {
 });
 
 // Modals: Media, QR, Help, Settings, Auto-Updater
-$('btn-close-media').addEventListener('click', () => {
+function closeMediaModal() {
   const v = $('pc-video-player');
   v.pause();
   v.removeAttribute('src');
+  v.querySelectorAll('track').forEach((t) => t.remove());
   v.load();
   const a = $('pc-audio-player');
   a.pause();
@@ -934,6 +935,16 @@ $('btn-close-media').addEventListener('click', () => {
   $('pc-image-player').removeAttribute('src');
   $('pc-text-player').textContent = '';
   $('media-modal').classList.add('hidden');
+}
+
+$('btn-close-media').addEventListener('click', closeMediaModal);
+
+document.querySelectorAll('.modal').forEach((modalEl) => {
+  modalEl.addEventListener('click', (e) => {
+    if (e.target !== modalEl) return;
+    if (modalEl.id === 'media-modal') closeMediaModal();
+    else modalEl.classList.add('hidden');
+  });
 });
 $('btn-media-reveal').addEventListener('click', () => {
   if (currentPreviewFile) {
@@ -1232,9 +1243,28 @@ window.beamdrop.onStateChanged(renderState);
 window.beamdrop.onFilesChanged((files) => renderFiles(files));
 window.beamdrop.onSessionsChanged(renderSessions);
 window.beamdrop.onClipboardChanged(renderClipboard);
+let transferRenderTimer = null;
+function scheduleRenderTransfers() {
+  if (transferRenderTimer) return;
+  transferRenderTimer = setTimeout(() => {
+    transferRenderTimer = null;
+    renderTransfers();
+  }, 120);
+}
+
 window.beamdrop.onTransferUpdate((t) => {
   transfers.set(t.id, t);
-  renderTransfers();
+  if (transfers.size > 100) {
+    const oldest = transfers.keys().next().value;
+    if (oldest) transfers.delete(oldest);
+  }
+  if (t.status !== 'active') {
+    clearTimeout(transferRenderTimer);
+    transferRenderTimer = null;
+    renderTransfers();
+  } else {
+    scheduleRenderTransfers();
+  }
 });
 window.beamdrop.onAuthChallenge((ch) => {
   pendingChallenges.push(ch);

@@ -2,6 +2,13 @@
 
 All notable changes to **BeamDrop** are documented in this file.
 
+## [1.5.2] - 2026-11-27
+
+### Performance, Contrast & Legal Polish
+- **Backend Performance & Long Paths**: Parallelized `pruneMissingSharedItems()` with `Promise.all()`, standardized `toLongPath()` and `1 MB` `highWaterMark` streams across full & `206 Range` downloads, and throttled transfer list DOM updates (`120ms`).
+- **Smooth Controls & High-Contrast Readability**: Added click-outside-to-close on all PC & Mobile modals, disabled browser link/image drag-ghosting (`-webkit-user-drag: none`), and darkened Light/Dark muted text and borders for crisp legibility.
+- **Legal, Developer Info & Privacy Alignment**: Expanded the **About** modal with full copyright, developer links (`atharvapatil.tech`), Security, Privacy, License, and Third-Party Notices links, and updated `PRIVACY.md` to accurately disclose the optional GitHub Releases update check.
+
 ## [1.5.1] - 2026-11-27
 
 ### Wellbeing, Updater & Architectural UI

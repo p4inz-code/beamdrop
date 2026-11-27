@@ -1,6 +1,6 @@
 {
   "name": "beamdrop",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "Zero-cloud, FDM-minimal local Wi-Fi file & 2GB+ video transfer app for PC and mobile.",
   "main": "src/main.js",
   "scripts": {

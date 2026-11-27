@@ -4,7 +4,8 @@
 
 ## What BeamDrop Does Not Do
 - **No Analytics or Telemetry**: BeamDrop does not collect usage metrics, crash reports, device IDs, or IP addresses.
-- **No External Servers**: BeamDrop never contacts any external server, update API, or cloud relay.
+- **No External File Servers or Analytics**: BeamDrop never uploads your files, filenames, IP addresses, or usage metrics to any external server or cloud relay.
+- **Optional Update Check**: The only external network request BeamDrop can make is an optional check against GitHub Releases (`api.github.com/repos/p4inz-code/beamdrop/releases/latest`) for new versions, which you can disable anytime in **Settings**.
 - **No Accounts**: There is no sign-up, login, or tracking cookie.
 
 ## What Stays on Your Machine

@@ -738,6 +738,16 @@ $('btn-close-text').addEventListener('click', () => {
   $('text-modal').classList.add('hidden');
 });
 
+document.querySelectorAll('.modal').forEach((modalEl) => {
+  modalEl.addEventListener('click', (e) => {
+    if (e.target !== modalEl) return;
+    if (modalEl.id === 'video-modal') $('btn-close-video').click();
+    else if (modalEl.id === 'audio-modal') $('btn-close-audio').click();
+    else if (modalEl.id === 'image-modal') $('btn-close-image').click();
+    else if (modalEl.id === 'text-modal') $('btn-close-text').click();
+  });
+});
+
 // Chunked Upload Engine (3x parallel + resume)
 $('btn-send-files').addEventListener('click', () => $('file-picker').click());
 $('file-picker').addEventListener('change', (e) => {

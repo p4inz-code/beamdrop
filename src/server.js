@@ -467,15 +467,18 @@ class BeamDropServer extends EventEmitter {
 
   async pruneMissingSharedItems() {
     let changed = false;
-    for (const [id, item] of this.sharedItems.entries()) {
-      try {
-        await fsp.access(toLongPath(item.filePath));
-      } catch {
-        this.sharedItems.delete(id);
-        this.sharedByPath.delete(item.filePath);
-        changed = true;
-      }
-    }
+    const entries = Array.from(this.sharedItems.entries());
+    await Promise.all(
+      entries.map(async ([id, item]) => {
+        try {
+          await fsp.access(toLongPath(item.filePath));
+        } catch {
+          this.sharedItems.delete(id);
+          this.sharedByPath.delete(item.filePath);
+          changed = true;
+        }
+      })
+    );
     if (changed) {
       this.broadcast('files:updated', this.getPublicFileList());
       this.emit('files:changed', this.getPublicFileList());
@@ -920,8 +923,9 @@ class BeamDropServer extends EventEmitter {
     if (!item) return sendJson(res, 404, { error: 'File not found' });
 
     let stat;
+    const diskPath = toLongPath(item.filePath);
     try {
-      stat = await fsp.stat(item.filePath);
+      stat = await fsp.stat(diskPath);
     } catch {
       return sendJson(res, 404, { error: 'File no longer exists on disk' });
     }
@@ -955,7 +959,7 @@ class BeamDropServer extends EventEmitter {
         'Content-Security-Policy': "sandbox; default-src 'none';",
         'Accept-Ranges': 'bytes'
       });
-      const stream = fs.createReadStream(item.filePath, { highWaterMark: 1024 * 1024 });
+      const stream = fs.createReadStream(diskPath, { highWaterMark: 1024 * 1024 });
       return this.pipeWithTracking(stream, res, req, {
         filename: item.name,
         deviceName: session.deviceName,
@@ -998,7 +1002,7 @@ class BeamDropServer extends EventEmitter {
       }
 
       res.writeHead(206, headers);
-      const stream = fs.createReadStream(item.filePath, { start, end, highWaterMark: 1024 * 1024 });
+      const stream = fs.createReadStream(diskPath, { start, end, highWaterMark: 1024 * 1024 });
       return this.pipeWithTracking(stream, res, req, {
         filename: item.name,
         deviceName: session.deviceName,
@@ -1013,7 +1017,7 @@ class BeamDropServer extends EventEmitter {
       'Content-Security-Policy': "sandbox; default-src 'none';",
       'Accept-Ranges': 'bytes'
     });
-    const stream = fs.createReadStream(item.filePath, { highWaterMark: 512 * 1024 });
+    const stream = fs.createReadStream(diskPath, { highWaterMark: 1024 * 1024 });
     return this.pipeWithTracking(stream, res, req, {
       filename: item.name,
       deviceName: session.deviceName,
