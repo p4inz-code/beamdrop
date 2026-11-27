@@ -2,6 +2,13 @@
 
 All notable changes to **BeamDrop** are documented in this file.
 
+## [1.5.3] - 2026-11-27
+
+### Fixes & Smoothness
+- **Fixed Clear History in Transfers (`btn-clear-transfers` & `pipeWithTracking`)**: Aborted or closed phone downloads now emit `cancelled` instead of staying stuck as `active`, and **Clear History** clears all completed, cancelled, error, and stale transfers immediately.
+- **SaaS-Smooth View & Modal Transitions**: Fixed `.view.active` animation selector in `style.css` and upgraded view/modal entrance easing (`cubic-bezier(0.16, 1, 0.3, 1)`).
+- **Desktop Interactive E2E Suite**: Added end-to-end Playwright coverage for Transfers **Clear History**, System Wellbeing modal & backdrop close, Settings, About, and Software Update modals.
+
 ## [1.5.2] - 2026-11-27
 
 ### Performance, Contrast & Legal Polish

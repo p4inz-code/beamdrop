@@ -264,6 +264,112 @@ test('UI Icon & Alignment Audit: Lucide round caps, centered buttons, zero overf
       return issues;
     });
     assert.deepEqual(mobAudit, [], `Mobile alignment/icon issues: ${mobAudit.join('; ')}`);
+
+    // Audit 3: Desktop Interactive Controls E2E (4 nav views, Clear History, Wellbeing, Updater, Settings, About)
+    let transferCb = null;
+    await deskCtx.addInitScript(() => {});
+    const e2ePage = await deskCtx.newPage();
+    await e2ePage.addInitScript(() => {
+      let onTr = null;
+      window.__emitTransfer = (t) => onTr && onTr(t);
+      window.beamdrop = {
+        getState: async () => ({
+          url: 'http://192.168.1.10:5050',
+          mdnsUrl: 'http://beamdrop.local:5050',
+          qrUrl: 'http://192.168.1.10:5050/?q=demo',
+          qrDataUrl: '',
+          pin: '1234',
+          port: 5050,
+          localBaseUrl: 'http://127.0.0.1:5050',
+          localPreviewToken: '',
+          useHttps: false,
+          lanReachable: true,
+          wellbeing: {
+            ok: true,
+            timestamp: Date.now(),
+            lanReachable: true,
+            mdnsEnabled: true,
+            server: { ok: true, port: 5050, https: false, activeSessions: 0, maxSessions: 64 },
+            storage: { ok: true, writable: true, lowDisk: false, freeBytes: 100 * 1024 ** 3 },
+            uploads: { ok: true, active: 0, max: 16 },
+            ffmpeg: { available: false },
+            memory: { rssMb: 42 }
+          },
+          vpnDetected: false,
+          ffmpegAvailable: false,
+          settings: { port: 5050, enableMdns: true, useHttps: false, launchAtLogin: false, ffmpegRemux: false, checkUpdatesOnStartup: true, clearOnQuit: false },
+          requireApproval: true,
+          roomMode: false,
+          platform: 'win32',
+          saveDir: 'C:\\Users\\Demo\\Downloads\\BeamDrop',
+          interfaces: [{ name: 'Wi-Fi', address: '192.168.1.10', isUsbTether: false }],
+          selectedAddress: '192.168.1.10',
+          files: [],
+          sessions: [],
+          trustedDevices: [],
+          clipboard: []
+        }),
+        getWellbeing: async () => ({
+          ok: true,
+          timestamp: Date.now(),
+          lanReachable: true,
+          mdnsEnabled: true,
+          server: { ok: true, port: 5050, https: false, activeSessions: 0, maxSessions: 64 },
+          storage: { ok: true, writable: true, lowDisk: false, freeBytes: 100 * 1024 ** 3 },
+          uploads: { ok: true, active: 0, max: 16 },
+          ffmpeg: { available: false },
+          memory: { rssMb: 42 }
+        }),
+        checkUpdates: async () => ({ state: 'up-to-date' }),
+        updateSettings: async (p) => p,
+        onStateChanged: () => {},
+        onFilesChanged: () => {},
+        onSessionsChanged: () => {},
+        onClipboardChanged: () => {},
+        onTransferUpdate: (cb) => { onTr = cb; },
+        onAuthChallenge: () => {},
+        onUpdaterStatus: () => {},
+        onUpdaterProgress: () => {}
+      };
+    });
+    await e2ePage.goto(deskPath, { waitUntil: 'domcontentloaded' });
+    await e2ePage.waitForTimeout(200);
+
+    // Emit completed + cancelled transfers, switch to Transfers, and click Clear History
+    await e2ePage.evaluate(() => {
+      window.__emitTransfer({ id: 't1', direction: 'download', filename: 'clip.mp4', status: 'completed', percent: 100, totalSize: 1048576 });
+      window.__emitTransfer({ id: 't2', direction: 'upload', filename: 'aborted.mov', status: 'cancelled', percent: 40, receivedBytes: 400, totalSize: 1000 });
+    });
+    await e2ePage.click('.nav-item[data-view="transfers"]');
+    await e2ePage.waitForSelector('#view-transfers.active');
+    assert.equal(await e2ePage.locator('#transfers-list .item-row').count(), 2);
+
+    await e2ePage.click('#btn-clear-transfers');
+    assert.equal(await e2ePage.locator('#transfers-list .item-row').count(), 0);
+    assert.equal(await e2ePage.locator('#nav-transfers-count').textContent(), '0');
+
+    // Open & close System Wellbeing via titlebar badge + backdrop click
+    await e2ePage.click('#lan-status-badge');
+    await e2ePage.waitForSelector('#wellbeing-modal:not(.hidden)');
+    assert.equal(await e2ePage.locator('#wellbeing-grid .wellbeing-row').count(), 6);
+    await e2ePage.click('#wellbeing-modal', { position: { x: 10, y: 10 } });
+    await e2ePage.waitForSelector('#wellbeing-modal', { state: 'hidden' });
+
+    // Open & close About, Settings, and Software Update modals
+    await e2ePage.click('#btn-open-help');
+    await e2ePage.waitForSelector('#help-modal:not(.hidden)');
+    await e2ePage.click('#btn-close-help');
+    await e2ePage.waitForSelector('#help-modal', { state: 'hidden' });
+
+    await e2ePage.click('#btn-open-settings');
+    await e2ePage.waitForSelector('#settings-modal:not(.hidden)');
+    await e2ePage.click('#btn-close-settings');
+    await e2ePage.waitForSelector('#settings-modal', { state: 'hidden' });
+
+    await e2ePage.click('#btn-open-updater');
+    await e2ePage.waitForSelector('#updater-modal:not(.hidden)');
+    await e2ePage.click('#btn-close-updater');
+    await e2ePage.waitForSelector('#updater-modal', { state: 'hidden' });
   } finally {
     if (browser) await browser.close();
   }

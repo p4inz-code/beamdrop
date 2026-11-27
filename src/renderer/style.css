@@ -1435,12 +1435,12 @@ body.window-drag .drop-bar {
   transform: scale(1.02);
 }
 
-.view-panel.active {
-  animation: viewEnter 150ms linear;
+.view.active {
+  animation: viewEnter 180ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .modal:not(.hidden) .modal-card {
-  animation: modalEnter 150ms linear;
+  animation: modalEnter 180ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .status-dot {

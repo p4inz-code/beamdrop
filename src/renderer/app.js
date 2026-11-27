@@ -866,10 +866,19 @@ $('btn-clear-files').addEventListener('click', async () => {
   showToast('Shared list cleared');
 });
 $('btn-clear-transfers').addEventListener('click', () => {
-  for (const [id, t] of transfers.entries()) {
-    if (t.status !== 'active') transfers.delete(id);
+  const now = Date.now();
+  let removed = 0;
+  for (const [id, t] of Array.from(transfers.entries())) {
+    const isLive = t.status === 'active' && t._updatedAt && (now - t._updatedAt) < 15_000;
+    if (!isLive) {
+      transfers.delete(id);
+      removed += 1;
+    }
   }
+  clearTimeout(transferRenderTimer);
+  transferRenderTimer = null;
   renderTransfers();
+  showToast(removed > 0 ? 'Transfer history cleared' : 'No completed transfers to clear');
 });
 $('btn-paste-send').addEventListener('click', async () => {
   const entry = await window.beamdrop.pasteAndSendClipboard();
@@ -1253,7 +1262,7 @@ function scheduleRenderTransfers() {
 }
 
 window.beamdrop.onTransferUpdate((t) => {
-  transfers.set(t.id, t);
+  transfers.set(t.id, { ...t, _updatedAt: Date.now() });
   if (transfers.size > 100) {
     const oldest = transfers.keys().next().value;
     if (oldest) transfers.delete(oldest);

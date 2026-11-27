@@ -912,6 +912,7 @@ class BeamDropServer extends EventEmitter {
     res.on('close', () => {
       if (!res.writableFinished && !stream.destroyed) {
         stream.destroy();
+        if (meta.trackDownload) emitProgress('cancelled');
       }
     });
 
